@@ -73,7 +73,7 @@
   <img src="https://i.imgur.com/rLTmFC2.png" alt="Stremio Web Desktop Screenshot" width="600" />
 </p>
 <p align="center">
-  <small><i>Anime4k + Auto HDR vs Offical Stremio v5.</i></small>
+  <small><i>Anime4k + Auto HDR vs Official Stremio v5.</i></small>
 </p>
 
 <p align="center">
@@ -131,7 +131,7 @@
 2. 🚀 **Linux, macOS**
 - Coming soon!
 
-> **⏳ Note:** Linux and Mac release will take considerable time as they need their own build with os specific technology's
+> **⏳ Note:** Linux and Mac release will take considerable time as they need their own build with OS specific technologies
 
 ## 🔍 **Mpv Upscalers**
 
@@ -165,7 +165,7 @@
 ## 🔍 **Mpv Addons**
 
 - 🎥 **[ThumbFast](https://github.com/po5/thumbfast)**
-    - 🔧 Go in the `Stremio-Dekstop-v5` Repo to ``utils/mpv/thumbfast`` or [direct-link](https://github.com/Zaarrg/stremio-desktop-v5/tree/webview-windows/utils/mpv/thumbfast) and download ``thumbfast.7z``. Drag and Drop the archive contents into ``%localAppData%\Programs\LNV\Stremio-5``
+    - 🔧 Go in the `Stremio-Desktop-v5` Repo to ``utils/mpv/thumbfast`` or [direct-link](https://github.com/Zaarrg/stremio-desktop-v5/tree/webview-windows/utils/mpv/thumbfast) and download ``thumbfast.7z``. Drag and Drop the archive contents into ``%localAppData%\Programs\LNV\Stremio-5``
     - 📁 Works best with local files as there is no **network bottleneck**. U can `Drag and Drop` any local file into **Stremio** or right click ``Open With > Stremio``
 
 > **⏳ Note:** For more details visit [mpv-portable-configs](https://github.com/Zaarrg/stremio-desktop-v5/blob/webview-windows/utils/mpv/README.md)
