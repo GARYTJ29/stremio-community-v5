@@ -9,5 +9,6 @@ void WaitAndRefreshIfNeeded();
 void refreshWeb(bool refreshAll);
 static void SetupWebMessageHandler();
 static void SetupExtensions();
+static void SetupWebMods();
 
 #endif // WEBVIEW_H

@@ -1,5 +1,6 @@
 #include "helpers.h"
 
+#include <fstream>
 #include <iostream>
 #include <shellscalingapi.h>
 #include <tlhelp32.h>
@@ -244,4 +245,104 @@ void ScaleWithDPI() {
     g_tray_sepH  = ScaleValue(g_tray_sepH);
     g_tray_w     = ScaleValue(g_tray_w);
     g_font_height = ScaleValue(g_font_height);
+}
+
+// ---- UTF-8 file read
+bool ReadFileUtf8(const std::wstring& path, std::string& out)
+{
+    std::ifstream f(path, std::ios::binary);
+    if (!f) return false;
+    f.seekg(0, std::ios::end);
+    std::streamsize size = f.tellg();
+    f.seekg(0, std::ios::beg);
+    out.resize(static_cast<size_t>(size));
+    if (size > 0) f.read(&out[0], size);
+    return true;
+}
+
+// ---- tiny Base64
+std::string Base64Encode(const std::string& in)
+{
+    static const char* T = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    std::string out;
+    out.reserve(((in.size() + 2) / 3) * 4);
+    int val = 0, valb = -6;
+    for (uint8_t c : in) {
+        val = (val << 8) + c;
+        valb += 8;
+        while (valb >= 0) {
+            out.push_back(T[(val >> valb) & 0x3F]);
+            valb -= 6;
+        }
+    }
+    if (valb > -6) out.push_back(T[((val << 8) >> (valb + 8)) & 0x3F]);
+    while (out.size() % 4) out.push_back('=');
+    return out;
+}
+
+// ---- wrap CSS text into a safe injector (decodes UTF-8 from base64)
+std::wstring MakeInjectCssScript(const std::wstring& idSafe, const std::string& cssUtf8)
+{
+    const std::string b64 = Base64Encode(cssUtf8);
+    const std::wstring wb64 = Utf8ToWstring(b64);
+    std::wstringstream ss;
+
+    ss <<
+    L"(function(){try{"
+        L"if(window.top!==window)return;"
+        L"var id='webmods-css-" << idSafe << L"';"
+        L"function inject(){"
+            L"try{"
+                L"var root=document.head||document.documentElement||document.body;"
+                L"if(!root){"
+                    L"document.addEventListener('DOMContentLoaded',inject,{once:true});"
+                    L"document.addEventListener('readystatechange',function(){"
+                        L"if(document.readyState==='interactive'||document.readyState==='complete')inject();"
+                    L"},{once:true});"
+                    L"setTimeout(inject,25);"
+                    L"return;"
+                L"}"
+                L"if(document.getElementById(id))return;"
+                L"var bin=atob('" << wb64 << L"');"
+                L"var bytes=new Uint8Array(bin.length);"
+                L"for(var i=0;i<bin.length;i++)bytes[i]=bin.charCodeAt(i);"
+                L"var css='';"
+                L"try{css=new TextDecoder('utf-8').decode(bytes);}catch(e){css=decodeURIComponent(escape(bin));}"
+                L"var s=document.createElement('style');"
+                L"s.id=id;"
+                L"s.textContent=css;"
+                L"root.appendChild(s);"
+            L"}catch(e){console.error('webmods css inject tick failed:',e);setTimeout(inject,50);}"
+        L"}"
+        L"inject();"
+    L"}catch(e){console.error('webmods css inject failed:',e);}})();";
+
+    return ss.str();
+}
+
+
+// ---- wrap JS text into a safe executor
+std::wstring MakeInjectJsScript(const std::wstring&,const std::string& jsUtf8)
+{
+    const std::string b64 = Base64Encode(jsUtf8);
+    const std::wstring wb64 = Utf8ToWstring(b64);
+    std::wstringstream ss;
+
+    ss <<
+    L"(function(){try{"
+        L"if(window.top!==window)return;"
+        L"function run(){"
+            L"try{"
+                L"var bin=atob('" << wb64 << L"');"
+                L"var bytes=new Uint8Array(bin.length);"
+                L"for(var i=0;i<bin.length;i++)bytes[i]=bin.charCodeAt(i);"
+                L"var js='';"
+                L"try{js=new TextDecoder('utf-8').decode(bytes);}catch(e){js=decodeURIComponent(escape(bin));}"
+                L"(0,eval)(js);"
+            L"}catch(e){console.error('webmods js exec tick failed:',e);setTimeout(run,25);}"
+        L"}"
+        L"run();"
+    L"}catch(e){console.error('webmods js exec failed:',e);}})();";
+
+    return ss.str();
 }

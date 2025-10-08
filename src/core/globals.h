@@ -27,7 +27,7 @@ using json = nlohmann::json;
 #define APP_TITLE "Stremio - Freedom to Stream"
 #define APP_NAME  "Stremio"
 #define APP_CLASS L"Stremio"
-#define APP_VERSION "5.0.19"
+#define APP_VERSION "5.0.20"
 
 // -----------------------------------------------------------------------------
 // Globals

@@ -289,6 +289,8 @@ void InitWebView2(HWND hWnd)
                     g_webview->AddScriptToExecuteOnDocumentCreated(EXEC_SHELL_SCRIPT,nullptr);
                     g_webview->AddScriptToExecuteOnDocumentCreated(INJECTED_KEYDOWN_SCRIPT,nullptr);
 
+                    SetupWebMods();
+
                     SetupExtensions();
                     SetupWebMessageHandler();
 
@@ -624,6 +626,68 @@ static void SetupExtensions()
         }
     } catch(...) {
         std::cout<<"[EXTENSIONS]: No extensions folder or iteration failed.\n";
+    }
+}
+
+static void SetupWebMods()
+{
+    if (!g_webview) return;
+
+    wchar_t buf[MAX_PATH];
+    GetModuleFileNameW(nullptr, buf, MAX_PATH);
+    std::wstring exeDir = buf;
+    size_t pos = exeDir.find_last_of(L"\\/");
+    if (pos != std::wstring::npos) exeDir.erase(pos);
+
+    const std::filesystem::path root = std::filesystem::path(exeDir) / L"portable_config" / L"webmods";
+    if (!std::filesystem::exists(root) || !std::filesystem::is_directory(root)) {
+        std::wcout << L"[WEBMODS] Folder not found: " << root.wstring() << std::endl;
+        return;
+    }
+
+    std::vector<std::filesystem::path> cssFiles, jsFiles;
+    for (const auto& e : std::filesystem::recursive_directory_iterator(root)) {
+        if (!e.is_regular_file()) continue;
+        auto ext = e.path().extension().wstring();
+        std::transform(ext.begin(), ext.end(), ext.begin(), ::towlower);
+        if (ext == L".map" || ext == L".bak" || ext == L".tmp") continue;
+        if (ext == L".css") cssFiles.push_back(e.path());
+        else if (ext == L".js") jsFiles.push_back(e.path());
+    }
+
+    auto relStr = [&](const std::filesystem::path& p){
+        try { return std::filesystem::relative(p, root).wstring(); }
+        catch(...) { return p.wstring(); }
+    };
+    auto sorter = [&](const std::filesystem::path& a, const std::filesystem::path& b){
+        auto ra = relStr(a), rb = relStr(b);
+        return _wcsicmp(ra.c_str(), rb.c_str()) < 0;
+    };
+    std::sort(cssFiles.begin(), cssFiles.end(), sorter);
+    std::sort(jsFiles.begin(), jsFiles.end(), sorter);
+
+    auto makeId = [&](const std::filesystem::path& p){
+        std::wstring id = relStr(p);
+        for (auto& ch : id) if (!iswalnum(ch)) ch = L'_';
+        return id;
+    };
+
+    for (const auto& p : cssFiles) {
+        std::string content;
+        if (!ReadFileUtf8(p.wstring(), content)) continue;
+        const std::wstring id = makeId(p);
+        const std::wstring script = MakeInjectCssScript(id, content);
+        g_webview->AddScriptToExecuteOnDocumentCreated(script.c_str(), nullptr);
+        std::wcout << L"[WEBMODS] CSS: " << relStr(p) << std::endl;
+    }
+
+    for (const auto& p : jsFiles) {
+        std::string content;
+        if (!ReadFileUtf8(p.wstring(), content)) continue;
+        const std::wstring id = makeId(p);
+        const std::wstring script = MakeInjectJsScript(id, content);
+        g_webview->AddScriptToExecuteOnDocumentCreated(script.c_str(), nullptr);
+        std::wcout << L"[WEBMODS] JS: " << relStr(p) << std::endl;
     }
 }
 
