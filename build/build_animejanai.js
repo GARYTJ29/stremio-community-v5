@@ -235,27 +235,52 @@ function find7zExecutable() {
         const version = releaseJson.tag_name || 'latest';
         console.log(`Latest version: ${version}`);
 
-        // Step 2: Find the 'full-package' .7z asset
-        const assets = releaseJson.assets;
-        const fullPackageAsset = assets.find(asset => asset.name.includes('full-package') && asset.name.endsWith('.7z'));
+        // Step 2: Locate and download the 'full-package' asset(s) (single or multi-part)
+        const assets = releaseJson.assets || [];
+        const fullPackageCandidates = assets.filter(a =>
+            a.name.includes('full-package') &&
+            (a.name.endsWith('.7z') || /\.7z\.\d+$/.test(a.name))
+        );
 
-        if (!fullPackageAsset) {
-            throw new Error("No 'full-package' .7z asset found in the latest release.");
+        if (fullPackageCandidates.length === 0) {
+            throw new Error("No 'full-package' .7z or .7z.NNN assets found in the latest release.");
         }
 
-        const downloadUrl = fullPackageAsset.browser_download_url;
-        const assetName = fullPackageAsset.name;
-        const downloadedFilePath = path.join(TEMP_DIR, assetName);
+        // Group by base name (strip .7z or .7z.NNN)
+        const groups = fullPackageCandidates.reduce((acc, a) => {
+            const base = a.name.replace(/\.7z(\.\d+)?$/, '');
+            (acc[base] ||= []).push(a);
+            return acc;
+        }, {});
 
-        console.log(`Downloading asset: ${assetName}`);
-        await downloadFile(downloadUrl, downloadedFilePath);
-        console.log(`Downloaded to ${downloadedFilePath}`);
+        // Pick the group with the most parts (typically only one group exists in a release)
+        const [selectedBase, selectedGroup] = Object.entries(groups)
+            .sort((a, b) => b[1].length - a[1].length)[0];
 
-        // Step 3: Extract the .7z archive
+        // Sort deterministically: .7z (treated like part 0) or .7z.001, .002, ...
+        const sortedAssets = selectedGroup.slice().sort((a, b) => {
+            const pa = (/\.7z\.(\d+)$/.exec(a.name)?.[1]) ? parseInt(/\.7z\.(\d+)$/.exec(a.name)[1], 10) : 0;
+            const pb = (/\.7z\.(\d+)$/.exec(b.name)?.[1]) ? parseInt(/\.7z\.(\d+)$/.exec(b.name)[1], 10) : 0;
+            return pa - pb;
+        });
+
+        // Download all parts into TEMP_DIR
+        const downloadedParts = [];
+        for (const asset of sortedAssets) {
+            const dest = path.join(TEMP_DIR, asset.name);
+            console.log(`Downloading asset: ${asset.name}`);
+            await downloadFile(asset.browser_download_url, dest);
+            downloadedParts.push(dest);
+        }
+
+        // For extraction: if multipart, 7-Zip expects we point at the .7z.001; if single, the .7z file itself
+        const archiveToExtract = downloadedParts[0];
+
+        // Step 3: Extract the archive (7-Zip will auto-detect and read all parts if .001 is used)
         const extractDir = path.join(TEMP_DIR, 'extracted');
         fs.mkdirSync(extractDir, { recursive: true });
-        console.log(`Extracting ${downloadedFilePath} to ${extractDir}...`);
-        execCommand(`${sevenZipPath} x "${downloadedFilePath}" -o"${extractDir}" -y`, TEMP_DIR);
+        console.log(`Extracting ${path.basename(archiveToExtract)} to ${extractDir}...`);
+        execCommand(`${sevenZipPath} x "${archiveToExtract}" -o"${extractDir}" -y`, TEMP_DIR);
         console.log('Extraction complete.');
 
         // Step 4: Identify the root directory inside the extracted folder
@@ -346,7 +371,7 @@ function find7zExecutable() {
         console.log('Cleanup complete.');
 
         console.log('=== Build AnimeJaNai Script Completed Successfully ===');
-        process.exit(1);
+        process.exit(0);
     } catch (error) {
         console.error('Error during build:', error.message);
         process.exit(1);
