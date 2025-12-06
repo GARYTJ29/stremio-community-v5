@@ -104,7 +104,16 @@
         - **Install using the** `Installer`. Download `stremio-5.0.0-x64.exe` or `stremio-5.0.0-x86.exe` and run it.
     2. 💼 **Portable Version**
         - **Install using the** `Archive`. Download `stremio-5.0.0-x64.7z` or `stremio-5.0.0-x86.7z` extract it and run `stremio.exe`
-    3. 🥄 **Scoop.sh**
+    3.   **Winget (Recommended)**
+        ```shell
+       # Install
+       winget install Zaarrg.StremioCommunity
+       # Update
+       winget upgrade Zaarrg.StremioCommunity
+       # Uninstall
+       winget uninstall Zaarrg.StremioCommunity
+       ```
+    4. 🥄 **Scoop.sh**
         ```shell
        # Install
        scoop bucket add zarg https://github.com/zaarrg/scoop
@@ -115,7 +124,7 @@
        # Uninstall
        scoop uninstall stremio-desktop-v5
        ```
-    4. ~~🍫 **Chocolatey**~~
+    5. ~~🍫 **Chocolatey**~~
         ```shell
         ⚠️ Note: Chocolatey is not updated use scoop or a other installation method!
         # Install
@@ -125,7 +134,7 @@
         # Uninstall
         choco uninstall stremio-desktop-v5 -y
         ```
-        
+
 
 > **⏳ Note:** If you have stremio-desktop v4.x.x installed make sure to uninstall it first. Otherwise there might be issues.
 
@@ -239,7 +248,7 @@ Enhance your Stremio experience by customizing the MPV player settings. Below ar
   CTRL+4 no-osd change-list glsl-shaders set "~~/shaders/Anime4K_Clamp_Highlights.glsl;~~/shaders/Anime4K_Restore_CNN_VL.glsl;~~/shaders/Anime4K_Upscale_CNN_x2_VL.glsl;~~/shaders/Anime4K_Restore_CNN_M.glsl;~~/shaders/Anime4K_AutoDownscalePre_x2.glsl;~~/shaders/Anime4K_AutoDownscalePre_x4.glsl;~~/shaders/Anime4K_Upscale_CNN_x2_M.glsl"; show-text "Anime4K: Mode A+A (HQ)"
   CTRL+5 no-osd change-list glsl-shaders set "~~/shaders/Anime4K_Clamp_Highlights.glsl;~~/shaders/Anime4K_Restore_CNN_Soft_VL.glsl;~~/shaders/Anime4K_Upscale_CNN_x2_VL.glsl;~~/shaders/Anime4K_AutoDownscalePre_x2.glsl;~~/shaders/Anime4K_AutoDownscalePre_x4.glsl;~~/shaders/Anime4K_Restore_CNN_Soft_M.glsl;~~/shaders/Anime4K_Upscale_CNN_x2_M.glsl"; show-text "Anime4K: Mode B+B (HQ)"
   CTRL+6 no-osd change-list glsl-shaders set "~~/shaders/Anime4K_Clamp_Highlights.glsl;~~/shaders/Anime4K_Upscale_Denoise_CNN_x2_VL.glsl;~~/shaders/Anime4K_AutoDownscalePre_x2.glsl;~~/shaders/Anime4K_AutoDownscalePre_x4.glsl;~~/shaders/Anime4K_Restore_CNN_M.glsl;~~/shaders/Anime4K_Upscale_CNN_x2_M.glsl"; show-text "Anime4K: Mode C+A (HQ)"
-  
+
   CTRL+0 no-osd change-list glsl-shaders clr ""; show-text "GLSL shaders cleared"
   ```
 > **⏳ Note:** Some keys might not work as key presses are converted from js event.codes to literal values for mpv
@@ -247,7 +256,7 @@ Enhance your Stremio experience by customizing the MPV player settings. Below ar
 - **🔡 Subtitle Customization:**
   - Subtitles can be full customized in the ``mpv.conf`` by adding the following:
       ```shell
-      # Adjust as needed - 
+      # Adjust as needed -
         sub-font="Comic Sans MS"
         osd-font="Comic Sans MS"
         osd-font-size=43
@@ -272,12 +281,12 @@ Enhance your Stremio experience by customizing the MPV player settings. Below ar
           'subtitlesTextColor': 'sub-color',
           'subtitlesBackgroundColor': 'sub-back-color',
           'subtitlesOutlineColor': 'sub-border-color',
-    
+
           # Affected mpv sub settings by this are:
           sub-color
           sub-back-color  # + Alias sub-shadow-color
           sub-border-color # + Alias sub-outline-color
-    
+
           # All these need to be set via the web ui instead
       ```
 
@@ -299,8 +308,8 @@ If you want to build this app yourself, check the “[docs](https://github.com/Z
 ## ⚠️ **Disclaimer**
 This project is not affiliated with **Stremio** in any way.
 
-This fork is provided solely for educational and lawful use. **It does not support piracy or any form of copyright infringement.** 
-It is the user’s responsibility to ensure that any content accessed is fully compliant with the DMCA and all applicable copyright laws. 
+This fork is provided solely for educational and lawful use. **It does not support piracy or any form of copyright infringement.**
+It is the user’s responsibility to ensure that any content accessed is fully compliant with the DMCA and all applicable copyright laws.
 The project maintainers do not condone or support any illegal activities.
 
 ## 🤝 **Support Development**
