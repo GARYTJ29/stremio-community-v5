@@ -3,7 +3,7 @@
     "name": "uBlock Origin",
     "extension_name": "ublock",
     "logo": "https://upload.wikimedia.org/wikipedia/commons/thumb/0/05/UBlock_Origin.svg/2048px-UBlock_Origin.png",
-    "description": "uBlock Origin is not just an “ad blocker“, it's a wide-spectrum content blocker with CPU and memory efficiency as a primary feature.",
+    "description": "uBlock Origin is not just an “ad blocker“, it's a wide-spectrum content blocker with CPU and memory efficiency as a primary feature. If stremio does not start and loads infinitely remove this extension.",
     "types": ["Browser Extension", "other"],
     "behaviorHints": {
       "configurable": true,
