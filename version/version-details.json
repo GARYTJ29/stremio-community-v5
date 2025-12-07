@@ -10,7 +10,7 @@
       "checksum": "659177650030b33c19e6cacad9f879fa25c3f91f2ecc8678a657998430beed7d"
     },
     "server.js": {
-      "url": "https://dl.strem.io/server/v4.20.11/desktop/server.js",
+      "url": "https://dl.strem.io/server/v4.20.15/desktop/server.js",
       "checksum": "d900b0525bac3531aa6ce98e1a3c8a3b1d1b1daa069a7f6fcbddea5625f1f791"
     }
   }
