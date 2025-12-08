@@ -100,11 +100,11 @@
 ## 🔧 Installation
 
 1. 🪟 **Windows x64 and x86**
-    1. 📥 **Installer**
+    1. 📥 **Installer (Recommended)**
         - **Install using the** `Installer`. Download `stremio-5.0.0-x64.exe` or `stremio-5.0.0-x86.exe` and run it.
     2. 💼 **Portable Version**
         - **Install using the** `Archive`. Download `stremio-5.0.0-x64.7z` or `stremio-5.0.0-x86.7z` extract it and run `stremio.exe`
-    3. 📦 **Winget (Recommended)**
+    3. 📦 **Winget**
         ```shell
        # Install
        winget install Zaarrg.StremioCommunity
