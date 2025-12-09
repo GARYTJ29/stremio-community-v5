@@ -152,7 +152,7 @@
 
 - 🎨 **[AnimeJaNai](https://github.com/the-database/mpv-upscale-2x_animejanai)**
     - ❌ Not included by default.
-    - 📥 Download from the **Stremio-Desktop-v5** [release tab](https://github.com/Zaarrg/stremio-desktop-v5/releases/5.0.0-beta.7) the `stremio-animejanai-3.x.x.7z` for Stremio and drop the content of the 7z into `%localAppData%\Programs\LNV\Stremio-5\` and `replace all`
+    - 📥 Download from the **Stremio-Desktop-v5** [release tab](https://github.com/Zaarrg/stremio-community-v5/releases/tag/5.0.0-beta.20) the `stremio-animejanai-3.x.x.7z.001` and `stremio-animejanai-3.x.x.7z.002` for Stremio and drop the content of the 7z into `%localAppData%\Programs\LNV\Stremio-5\` and `replace all`
         - 🛠️ **Changes made:**
             - Removed `mpvnet.exe` as Stremio is used as the player.
             - Adjusted `mpv.conf` to work with Stremio.
@@ -164,6 +164,8 @@
         - 🔢 `SHIFT+1` - `SHIFT+3` Select Quality, Balanced or Performance Profiles
         - ⚙️ `CTRL+1` - `CTRL+9` Switch between Custom Profiles
         - 🔗 For more, check [AnimeJaNai](https://github.com/the-database/mpv-upscale-2x_animejanai)
+  - 📺 **Installation Guide**
+      - See: [AnimeJaNai – Youtube Installation Guide](https://www.youtube.com/watch?v=ZlPJ-M3kkdM)
 
 > **⏳ Note:** When using AnimeJaNai on first playback Stremio will be unresponsive and a console will open to build the model via e.g. TensorRT. You will need to wait until the console closes for playback to start. This happens only once per model.
 
@@ -209,13 +211,31 @@
         - 🔍 ``AllowZoom`` Allow zoom via `pinch action` or ``CTRL+Scroll``
 
 - ❌ **App Errors**
-    - If the app does not start and instantly closes, check the error log in ``portable_config\errors-{date}.txt``
-  - ⚠️ **Common Issues**
-      - ❗ [WebView2](https://developer.microsoft.com/de-de/microsoft-edge/webview2/#download) not installed – Installed by default using the installer but may have failed
-      - 🌎 Unreachable Web UI. Make sure you can reach the web ui hosted [here](https://zaarrg.github.io/stremio-web-shell-fixes/).
-      - ⚙️ Invalid MPV configuration like ``mpv.conf``, ``input.conf`` or ``scripts``
-      - 📄 Invalid ``stremio-settings.ini``
-      - 🧩 Invalid ``extensions``
+  - If the app does not start and instantly closes, check the error log in ``portable_config\errors-{date}.txt``
+    * ⚠️ **Common Issues**
+        * ❗ **WebView2 not available**
+            * The **installer** requires [WebView2](https://developer.microsoft.com/de-de/microsoft-edge/webview2/#download) to be installed.
+            * The **portable version** includes its own WebView2 runtime and does **not** require system installation.
+            * If a WebView-related error appears, install WebView2 or use the portable build.
+        * 🌎 **Unreachable Web UI**
+          The app loads the UI in the following order:
+            1. [https://stremio.zarg.me/](https://stremio.zarg.me/)
+            2. [https://zaarrg.github.io/stremio-web-shell-fixes/](https://zaarrg.github.io/stremio-web-shell-fixes/)
+            3. [https://web.stremio.com/](https://web.stremio.com/)
+            * If the UI appears stuck, press **F5** to reload.
+            * If the cached UI is outdated, use **Ctrl+F5** to clear cache and reload.
+        * ⚙️ **Invalid MPV configuration**
+          Invalid or unsupported config in `mpv.conf`, `input.conf`, or `scripts/` may prevent MPV from initializing.
+        * 📄 **Invalid `stremio-settings.ini`**
+          A default configuration is available:
+          [stremio-settings.ini](https://github.com/Zaarrg/stremio-desktop-v5/blob/webview-windows/utils/stremio/stremio-settings.ini)
+            * If corrupted, delete the file to let the app regenerate it.
+        * 🧩 **Invalid or incompatible extensions**
+          Extensions under `portable_config/extensions` may prevent startup.
+            * **uBlock** or similar blockers can cause infinite loading loops → remove them (see *Browser Extensions* section above).
+        * 🔁 **Server not running after sleep / incomplete restart**
+          If the PC went to sleep, the internal stremio server stops.
+            * Fully close the app via **Task Manager** and restart it.
 
 > **⏳ Note:** A default stremio-settings.ini can be found [here](https://github.com/Zaarrg/stremio-desktop-v5/blob/webview-windows/utils/stremio/stremio-settings.ini)
 
