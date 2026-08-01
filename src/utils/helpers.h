@@ -8,6 +8,7 @@
 
 std::string WStringToUtf8(const std::wstring &wstr);
 std::wstring Utf8ToWstring(const std::string& utf8Str);
+std::string ToLowerStr(std::string s);
 std::string decodeURIComponent(const std::string& encoded);
 std::wstring GetExeDirectory();
 std::wstring GetFirstReachableUrl();

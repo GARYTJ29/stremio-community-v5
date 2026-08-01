@@ -1,5 +1,8 @@
 #include <windows.h>
 #include <string>
+#include <algorithm>
+#include <vector>
+#include <unordered_set>
 #include "config.h"
 
 #include <sstream>
@@ -15,6 +18,55 @@ static std::wstring GetIniPath()
     CreateDirectoryW(pcDir.c_str(), nullptr);  // ensure it exists
     return pcDir + L"\\stremio-settings.ini";
 }
+
+// Loads a comma-separated [Security] allow-list into `out`.
+// effective = hardcoded defaults UNION user extras.
+static void LoadMergedAllowlist(const std::wstring& iniPath,
+                                const wchar_t* key,
+                                const wchar_t* defaults,
+                                std::unordered_set<std::string>& out)
+{
+    std::vector<wchar_t> buf(8192);
+    GetPrivateProfileStringW(L"Security", key, L"", buf.data(),
+                             (DWORD)buf.size(), iniPath.c_str());
+    std::wstring userStr = buf.data();
+
+    auto parse = [](const std::wstring& s, std::vector<std::wstring>& v){
+        std::wstringstream ss(s);
+        std::wstring tok;
+        while (std::getline(ss, tok, L',')) {
+            size_t a = tok.find_first_not_of(L" \t\r\n");
+            size_t b = tok.find_last_not_of(L" \t\r\n");
+            if (a == std::wstring::npos) continue;
+            tok = tok.substr(a, b - a + 1);
+            std::transform(tok.begin(), tok.end(), tok.begin(), ::towlower);
+            if (!tok.empty()) v.push_back(tok);
+        }
+    };
+
+    std::vector<std::wstring> defs, users, effective;
+    parse(defaults, defs);
+    parse(userStr, users);
+
+    effective = defs;
+    for (auto& u : users)
+        if (std::find(effective.begin(), effective.end(), u) == effective.end())
+            effective.push_back(u);
+
+    // Rewrite .ini if any default is missing (fresh install OR update added new defaults)
+    bool rewrite = false;
+    for (auto& d : defs)
+        if (std::find(users.begin(), users.end(), d) == users.end()) { rewrite = true; break; }
+    if (rewrite) {
+        std::wstring joined;
+        for (size_t i = 0; i < effective.size(); ++i) { if (i) joined += L","; joined += effective[i]; }
+        WritePrivateProfileStringW(L"Security", key, joined.c_str(), iniPath.c_str());
+    }
+
+    out.clear();
+    for (auto& e : effective) out.insert(WStringToUtf8(e));
+}
+
 
 void LoadSettings()
 {
@@ -37,6 +89,18 @@ void LoadSettings()
     WideCharToMultiByte(CP_UTF8, 0, voBuffer, -1, narrowVO, 32, NULL, NULL);
     g_initialVO = narrowVO;
     g_currentVolume = GetPrivateProfileIntW(L"MPV", L"InitialVolume", 50, iniPath.c_str());
+
+    // [Security] default-deny allow-lists
+    static const wchar_t* kDefCmds =
+        L"loadfile,sub-add,keypress,stop,script-message-to,cycle";
+    static const wchar_t* kDefProps =
+        L"pause,time-pos,speed,mute,volume,aid,sid,no-sub-ass,vo,osc,"
+        L"input-default-bindings,input-vo-keyboard,sub-scale,sub-pos,sub-delay,"
+        L"sub-color,sub-back-color,sub-border-color,hwdec,hwdec-codecs,"
+        L"subs-with-matching-audio,subs-match-os-language,subs-fallback,subs-fallback-forced";
+
+    LoadMergedAllowlist(iniPath, L"MpvCommandAllowlist", kDefCmds,  g_mpvCommandAllowlist);
+    LoadMergedAllowlist(iniPath, L"MpvSetPropAllowlist", kDefProps, g_mpvSetPropAllowlist);
 }
 
 void SaveSettings()

@@ -1,5 +1,6 @@
 #include "helpers.h"
 
+#include <algorithm>
 #include <fstream>
 #include <iostream>
 #include <shellscalingapi.h>
@@ -41,6 +42,14 @@ std::wstring Utf8ToWstring(const std::string& utf8Str)
     MultiByteToWideChar(CP_UTF8, 0, utf8Str.data(), (int)utf8Str.size(), &wstr[0], size_needed);
     return wstr;
 }
+
+std::string ToLowerStr(std::string s)
+{
+    std::transform(s.begin(), s.end(), s.begin(),
+                   [](unsigned char c){ return (char)std::tolower(c); });
+    return s;
+}
+
 
 bool FileExists(const std::wstring& path)
 {

@@ -133,6 +133,20 @@ void SendToJS(const std::string &eventName, const nlohmann::json &eventData)
 void HandleEvent(const std::string &ev, std::vector<std::string> &args)
 {
     if(ev=="mpv-command"){
+        // Allow list check
+        std::string cmdName = args.empty() ? "" : ToLowerStr(args[0]);
+        if(!g_mpvCommandAllowlist.count(cmdName)){
+            std::string full;
+            for(size_t i=0;i<args.size();++i){ if(i) full += " "; full += args[i]; }
+            AppendToCrashLog("[SECURITY]: BLOCKED mpv-command => " + full);
+            nlohmann::json j;
+            j["type"]    = "MpvCommandBlocked";
+            j["command"] = cmdName;
+            j["full"]    = full;
+            SendToJS("MpvCommandBlocked", j);
+            return;
+        }
+
         if(!args.empty() && args[0] == "loadfile" && args.size() > 1) {
             if (args[1].rfind("http://", 0) != 0 && args[1].rfind("https://", 0) != 0) {
                 args[1] = decodeURIComponent(args[1]);
@@ -145,6 +159,18 @@ void HandleEvent(const std::string &ev, std::vector<std::string> &args)
         }
         HandleMpvCommand(args);
     } else if(ev=="mpv-set-prop"){
+        // Allow list check
+        std::string prop = args.empty() ? "" : ToLowerStr(args[0]);
+        if(!g_mpvSetPropAllowlist.count(prop)){
+            std::string val = args.size() > 1 ? args[1] : "";
+            AppendToCrashLog("[SECURITY]: BLOCKED mpv-set-prop => " + prop + " = " + val);
+            nlohmann::json j;
+            j["type"]  = "MpvSetPropBlocked";
+            j["prop"]  = prop;
+            j["value"] = val;
+            SendToJS("MpvSetPropBlocked", j);
+            return;
+        }
         HandleMpvSetProp(args);
     } else if(ev=="mpv-observe-prop"){
         HandleMpvObserveProp(args);

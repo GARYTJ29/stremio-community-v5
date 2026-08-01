@@ -36,6 +36,10 @@ const std::vector<std::wstring> g_subtitleExtensions = {
     L".xml", L".lrc", L".pjs", L".mpl", L".usf",
     L".qtvr"
 };
+// Security: default-deny allow-lists (populated in LoadSettings)
+std::unordered_set<std::string> g_mpvCommandAllowlist;
+std::unordered_set<std::string> g_mpvSetPropAllowlist;
+
 // Node
 std::atomic_bool g_nodeRunning = false;
 std::thread      g_nodeThread;

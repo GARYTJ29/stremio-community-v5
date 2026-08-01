@@ -13,6 +13,8 @@
 #include <filesystem>
 #include <wil/com.h>
 #include "nlohmann/json.hpp"
+#include <unordered_set>
+
 
 #include "mpv/client.h"
 #include <WebView2.h>
@@ -58,6 +60,9 @@ extern bool g_initialSet;
 extern std::string g_initialVO;
 extern int g_currentVolume;
 extern const std::vector<std::wstring> g_subtitleExtensions;
+// Security: default-deny allow-lists (lowercased, utf8)
+extern std::unordered_set<std::string> g_mpvCommandAllowlist;
+extern std::unordered_set<std::string> g_mpvSetPropAllowlist;
 
 // custom messages
 #define WM_MPV_WAKEUP (WM_APP + 2)
