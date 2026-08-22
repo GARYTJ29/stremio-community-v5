@@ -64,6 +64,8 @@ set(SOURCES
         src/utils/extensions.h
         src/utils/discord.cpp
         src/utils/discord.h
+        src/input/gamepad.h
+        src/input/gamepad.cpp
 )
 
 add_executable(${PROJECT_NAME} WIN32 ${SOURCES})

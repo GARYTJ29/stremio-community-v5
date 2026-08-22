@@ -82,6 +82,20 @@ void LoadSettings()
     g_pauseOnMinimize = (GetPrivateProfileIntW(L"General", L"PauseOnMinimize", 1, iniPath.c_str()) == 1);
     g_pauseOnLostFocus = (GetPrivateProfileIntW(L"General", L"PauseOnLostFocus", 0, iniPath.c_str()) == 1);
     g_isRpcOn = (GetPrivateProfileIntW(L"General", L"DiscordRPC", 1, iniPath.c_str()) == 1);
+
+    // Controller
+    g_gamepadEnabled     = (GetPrivateProfileIntW(L"Controller", L"Enabled", 1, iniPath.c_str()) == 1);
+    g_gamepadVibration   = (GetPrivateProfileIntW(L"Controller", L"Vibration", 1, iniPath.c_str()) == 1);
+    g_gamepadFocusRing   = (GetPrivateProfileIntW(L"Controller", L"FocusRing", 1, iniPath.c_str()) == 1);
+    g_gamepadArrowNav    = (GetPrivateProfileIntW(L"Controller", L"ArrowNavigation", 1, iniPath.c_str()) == 1);
+    g_gamepadDeadzone    = GetPrivateProfileIntW(L"Controller", L"Deadzone", 35, iniPath.c_str());
+    g_gamepadRepeatDelay = GetPrivateProfileIntW(L"Controller", L"RepeatDelay", 500, iniPath.c_str());
+    g_gamepadRepeatRate  = GetPrivateProfileIntW(L"Controller", L"RepeatRate", 300, iniPath.c_str());
+    // Clamp so a hand-edited .ini cannot make the pad unusable
+    g_gamepadDeadzone    = std::clamp(g_gamepadDeadzone, 5, 90);
+    g_gamepadRepeatDelay = std::clamp(g_gamepadRepeatDelay, 50, 2000);
+    g_gamepadRepeatRate  = std::clamp(g_gamepadRepeatRate, 20, 1000);
+
     //Mpv
     wchar_t voBuffer[32];
     GetPrivateProfileStringW(L"MPV", L"VideoOutput", L"gpu-next", voBuffer, 32, iniPath.c_str());
@@ -121,6 +135,14 @@ void SaveSettings()
     WritePrivateProfileStringW(L"General", L"AllowZoom", allowZoomVal, iniPath.c_str());
     WritePrivateProfileStringW(L"General", L"DiscordRPC", rpcVal, iniPath.c_str());
     WriteIntToIni(L"MPV", L"InitialVolume", g_currentVolume, iniPath);
+
+    WritePrivateProfileStringW(L"Controller", L"Enabled",   g_gamepadEnabled   ? L"1" : L"0", iniPath.c_str());
+    WritePrivateProfileStringW(L"Controller", L"Vibration", g_gamepadVibration ? L"1" : L"0", iniPath.c_str());
+    WritePrivateProfileStringW(L"Controller", L"FocusRing", g_gamepadFocusRing ? L"1" : L"0", iniPath.c_str());
+    WritePrivateProfileStringW(L"Controller", L"ArrowNavigation", g_gamepadArrowNav ? L"1" : L"0", iniPath.c_str());
+    WriteIntToIni(L"Controller", L"Deadzone",    g_gamepadDeadzone,    iniPath);
+    WriteIntToIni(L"Controller", L"RepeatDelay", g_gamepadRepeatDelay, iniPath);
+    WriteIntToIni(L"Controller", L"RepeatRate",  g_gamepadRepeatRate,  iniPath);
 }
 
 static void WriteIntToIni(const std::wstring &section, const std::wstring &key, int value, const std::wstring &iniPath)

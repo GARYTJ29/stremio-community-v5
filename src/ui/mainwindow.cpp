@@ -16,6 +16,7 @@
 #include "../webview/webview.h"
 #include "../updater/updater.h"
 #include "../utils/discord.h"
+#include "../input/gamepad.h"
 
 // Single-instance
 bool FocusExistingInstance(const std::wstring &protocolArg)
@@ -92,6 +93,24 @@ void ToggleFullScreen(HWND hWnd, bool enable)
         SetWindowPlacement(hWnd,&prevPlc);
         SetWindowPos(hWnd,nullptr,0,0,0,0,SWP_NOMOVE|SWP_NOSIZE|SWP_FRAMECHANGED|SWP_SHOWWINDOW);
     }
+}
+
+// requestFullscreen() only succeeds inside a real user gesture, which the
+// gamepad module's synthetic keydown never carries (the Gamepad API is
+// polled, so there's no trusted DOM event to hang activation on). SendInput
+// reaches the page as a real OS-level key press instead - Chromium can't
+// tell it apart from a physical key - so the injected script's own F13
+// handler can call requestFullscreen() with genuine activation. F13 has no
+// default binding on real keyboards, so it can't collide with anything.
+static void SendSyntheticFullscreenKey()
+{
+    INPUT inputs[2] = {};
+    inputs[0].type = INPUT_KEYBOARD;
+    inputs[0].ki.wVk = VK_F13;
+    inputs[1].type = INPUT_KEYBOARD;
+    inputs[1].ki.wVk = VK_F13;
+    inputs[1].ki.dwFlags = KEYEVENTF_KEYUP;
+    SendInput(2, inputs, sizeof(INPUT));
 }
 
 // Dark/Light theme
@@ -255,6 +274,13 @@ void HandleEvent(const std::string &ev, std::vector<std::string> &args)
         }
     } else if (ev == "activity") {
         SetDiscordPresenceFromArgs(args);
+    } else if (ev == "request-fullscreen-key") {
+        // Only asked for when entering; exiting is handled entirely on the
+        // page side (exitFullscreen() needs no gesture). The native window
+        // itself is never touched here - it just follows
+        // ContainsFullScreenElementChanged once the DOM state actually
+        // flips, same as when the web UI's own fullscreen button is used.
+        SendSyntheticFullscreenKey();
     } else {
         std::cout<<"Unknown event="<<ev<<"\n";
     }
@@ -468,6 +494,11 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
             break;
         case ID_TRAY_PICTURE_IN_PICTURE:
             TogglePictureInPicture(hWnd, !g_isPipMode);
+            break;
+        case ID_TRAY_CONTROLLER:
+            g_gamepadEnabled = !g_gamepadEnabled;
+            SaveSettings();
+            ApplyGamepadEnabled();
             break;
         case ID_TRAY_PAUSE_FOCUS_LOST:
             g_pauseOnLostFocus=!g_pauseOnLostFocus;

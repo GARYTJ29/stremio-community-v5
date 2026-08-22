@@ -89,6 +89,7 @@ extern wil::com_ptr<ICoreWebView2_21>         g_webview;
 #define ID_TRAY_PAUSE_FOCUS_LOST  1006
 #define ID_TRAY_PICTURE_IN_PICTURE 1007
 #define ID_TRAY_QUIT             1008
+#define ID_TRAY_CONTROLLER       1009
 
 struct MenuItem
 {
@@ -117,6 +118,15 @@ extern bool g_pauseOnMinimize;
 extern bool g_pauseOnLostFocus;
 extern bool g_allowZoom;
 extern bool g_isRpcOn;
+
+// Controller (gamepad) support
+extern bool g_gamepadEnabled;
+extern int  g_gamepadDeadzone;    // percent of full stick deflection
+extern int  g_gamepadRepeatDelay; // ms before a held direction repeats
+extern int  g_gamepadRepeatRate;  // ms between repeats
+extern bool g_gamepadVibration;
+extern bool g_gamepadFocusRing;
+extern bool g_gamepadArrowNav;  // arrow keys select instead of scrolling (keyboard too)
 
 // Tray sizes
 extern int g_tray_itemH;

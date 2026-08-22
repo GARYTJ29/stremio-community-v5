@@ -125,6 +125,7 @@ static void ShowDarkTrayMenu()
     g_menuItems.push_back({ ID_TRAY_PAUSE_FOCUS_LOST, g_pauseOnLostFocus, false, L"Pause Unfocused" });
     g_menuItems.push_back({ ID_TRAY_CLOSE_ON_EXIT, g_closeOnExit,  false, L"Close on Exit" });
     g_menuItems.push_back({ ID_TRAY_USE_DARK_THEME, g_useDarkTheme, false, L"Use Dark Theme" });
+    g_menuItems.push_back({ ID_TRAY_CONTROLLER,   g_gamepadEnabled, false, L"Controller Support" });
     g_menuItems.push_back({ 0, false, true, L"" });
     g_menuItems.push_back({ ID_TRAY_QUIT, false, false, L"Quit" });
 

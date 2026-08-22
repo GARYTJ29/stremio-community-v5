@@ -73,6 +73,15 @@ bool g_pauseOnLostFocus  = false;
 bool g_allowZoom         = false;
 bool g_isRpcOn = true;
 
+// Controller (gamepad) support
+bool g_gamepadEnabled     = true;
+int  g_gamepadDeadzone    = 35;
+int  g_gamepadRepeatDelay = 500;
+int  g_gamepadRepeatRate  = 300;
+bool g_gamepadVibration   = true;
+bool g_gamepadFocusRing   = true;
+bool g_gamepadArrowNav    = true;
+
 // Tray sizes
 int g_tray_itemH = 31;
 int g_tray_sepH  = 8;

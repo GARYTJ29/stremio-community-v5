@@ -53,6 +53,7 @@
   <li>⚙️ <strong>App Settings</strong>: Customize options like CloseOnExit, PauseOnMinimize, and PauseOnLostFocus and more.</li>
   <li>🔄 <strong>Built-in Autoupdate</strong>: Built-in autoupdater. No need to always download from GitHub.</li>
   <li>📦 <strong>Scoop and Chocolatey</strong>: Support for Scoop and Choco for ease of use.</li>
+  <li>🎮 <strong>Controller Support</strong>: Navigate the menus and drive the player with an Xbox, DualSense/DualShock or Switch Pro pad.</li>
 </ul>
 
 
@@ -209,6 +210,13 @@
         - 😴 ``PauseOnMinimize`` Pause playback on window minimize
         - 👀 ``PauseOnLostFocus`` Pause playback on window loses focus
         - 🔍 ``AllowZoom`` Allow zoom via `pinch action` or ``CTRL+Scroll``
+        - 🎮 ``[Controller] Enabled`` Turn controller support on or off
+        - 🎮 ``[Controller] Vibration`` Short rumble when a pad connects
+        - 🎮 ``[Controller] FocusRing`` Draw a high-visibility outline around the focused item while a pad is connected
+        - 🎮 ``[Controller] ArrowNavigation`` Arrow keys select the neighbouring item and scroll it into view, instead of scrolling the list (applies to the keyboard too)
+        - 🎮 ``[Controller] Deadzone`` Stick deadzone in percent (default `35`)
+        - 🎮 ``[Controller] RepeatDelay`` Milliseconds a direction must be held before it starts repeating (default `500`) — raise it if navigation runs away from you
+        - 🎮 ``[Controller] RepeatRate`` Milliseconds between repeats while a direction is held (default `300`) — raise it to slow held-direction navigation further
 
 - ❌ **App Errors**
   - If the app does not start and instantly closes, check the error log in ``portable_config\errors-{date}.txt``
@@ -238,6 +246,58 @@
             * Fully close the app via **Task Manager** and restart it.
 
 > **⏳ Note:** A default stremio-settings.ini can be found [here](https://github.com/Zaarrg/stremio-desktop-v5/blob/webview-windows/utils/stremio/stremio-settings.ini)
+
+## 🎮 **Controller Support**
+
+Plug in a controller and it just works — no extra software, no remapping. Anything
+Chromium recognises is supported: **Xbox**, **DualSense / DualShock**, **Switch Pro**,
+and most generic pads. Press any button once after launch so the pad is picked up;
+a *Controller connected* toast confirms it.
+
+Controller support can be toggled at any time by `right-clicking` the **tray icon** →
+**Controller Support**, or permanently in the `[Controller]` section of
+``portable_config\stremio-settings.ini``.
+
+### 🕹️ **Menus**
+
+| Input | Action |
+| --- | --- |
+| D-Pad / Left Stick | Move the selection |
+| **A** / Cross | Open the selected item |
+| **B** / Circle | Back |
+| **X** / Square | Search |
+| **Y** / Triangle | Home |
+| **LB** / **RB** | Previous / next section (Home → Discover → Library → Calendar → Addons → Settings) |
+| **Start** | Home |
+| **Back / View** | Back |
+| Right Stick | Scroll the current list |
+| **L3** | Toggle fullscreen |
+
+### ▶️ **Player**
+
+| Input | Action |
+| --- | --- |
+| **A** / Cross, **Start** | Play / pause |
+| D-Pad Left / Right, Left Stick | Seek back / forward |
+| **LT** / **RT** | Hold to rewind / fast forward |
+| **LB** / **RB** | Short seek back / forward |
+| D-Pad Up / Down | Volume |
+| **B** / Circle | Exit the player |
+| **X** / Square | Subtitles menu |
+| **Y** / Triangle | Audio track menu |
+| **Back / View** | Episode / info drawer |
+| **R3** | Playback speed menu |
+| **L3** | Toggle fullscreen |
+
+> **⏳ Note:** The pad drives the same actions as the keyboard shortcuts the web UI already
+> exposes, so the on-screen player stays in sync — the seek bar, volume indicator and
+> pause icon all update exactly as they do with a mouse.
+
+> **🧭 Note:** Arrow keys always *select*, never scroll. Moving toward a card that is
+> off-screen selects that card in one press and scrolls just enough to reveal it, rather
+> than nudging the list along until the card happens to be fully visible. This applies to
+> the keyboard as well as the controller, and can be turned off with
+> ``[Controller] ArrowNavigation=0``.
 
 ## 🎛️ **Mpv Configuration**
 
