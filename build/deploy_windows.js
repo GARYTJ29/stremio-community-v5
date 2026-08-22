@@ -18,7 +18,10 @@ const { execSync } = require('child_process');
 // ---------------------------------------------------------------------
 const ARCH = process.argv.includes('--x86') ? 'x86' : 'x64';
 const SOURCE_DIR = path.resolve(__dirname, '..');
-const BUILD_DIR = path.join(SOURCE_DIR, `cmake-build-release-${ARCH}`);
+// Shared with the IDE's default CMake Tools build dir. Only one architecture can be
+// configured here at a time -- switching between --x86 and --x64 requires CMake to
+// reconfigure (it will do so automatically, just slower than separate dirs would be).
+const BUILD_DIR = path.join(SOURCE_DIR, 'build');
 const DIST_DIR = path.join(SOURCE_DIR, 'dist', `win-${ARCH}`);
 const CONFIG_DIR = path.join(SOURCE_DIR, 'dist', `win-${ARCH}`, 'portable_config');
 const PROJECT_NAME = 'stremio';
@@ -37,7 +40,12 @@ const DEFAULT_SETTINGS_FOLDER = path.join(SOURCE_DIR, 'utils', 'stremio');
 const DEFAULT_NSIS = 'C:\\Program Files (x86)\\NSIS\\makensis.exe';
 //VCPKG
 const VCPKG_TRIPLET = ARCH === 'x86' ? 'x86-windows-static' : 'x64-windows-static';
-const VCPKG_CMAKE = 'G:\\Documents\\Github\\vcpkg\\scripts\\buildsystems\\vcpkg.cmake';
+// NOTE: deliberately NOT reading the VCPKG_ROOT env var -- vcvars64.bat sets its own
+// VCPKG_ROOT pointing at VS Build Tools' bundled (empty) vcpkg instance, which would
+// silently shadow a real vcpkg install of this project's dependencies. Use
+// STREMIO_VCPKG_ROOT instead if your vcpkg lives somewhere other than C:\bin\vcpkg.
+const VCPKG_ROOT = process.env.STREMIO_VCPKG_ROOT || 'C:\\bin\\vcpkg';
+const VCPKG_CMAKE = path.join(VCPKG_ROOT, 'scripts', 'buildsystems', 'vcpkg.cmake');
 
 // ---------------------------------------------------------------------
 // Main
@@ -55,14 +63,16 @@ const VCPKG_CMAKE = 'G:\\Documents\\Github\\vcpkg\\scripts\\buildsystems\\vcpkg.
             fs.mkdirSync(BUILD_DIR, { recursive: true });
         }
 
-        console.log(`\n=== Running CMake in cmake-build-${debugBuild ? "Debug" : "Release"} ===`);
+        const msvcArch = ARCH === 'x86' ? 'Win32' : 'x64';
+        const buildConfig = debugBuild ? 'Debug' : 'Release';
+        console.log(`\n=== Running CMake (${buildConfig}, ${msvcArch}) in ${BUILD_DIR} ===`);
         process.chdir(BUILD_DIR);
         execSync(
-            `cmake -G Ninja -DCMAKE_BUILD_TYPE=${debugBuild ? "Debug" : "Release"} -DCMAKE_TOOLCHAIN_FILE=${VCPKG_CMAKE} -DVCPKG_TARGET_TRIPLET=${VCPKG_TRIPLET} ..`,
+            `cmake -G "Visual Studio 17 2022" -A ${msvcArch} "-DCMAKE_TOOLCHAIN_FILE=${VCPKG_CMAKE}" -DVCPKG_TARGET_TRIPLET=${VCPKG_TRIPLET} ..`,
             { stdio: 'inherit' }
         );
-        console.log('=== Running Ninja in cmake-build-release ===');
-        execSync('ninja', { stdio: 'inherit' });
+        console.log(`=== Building (${buildConfig}) in ${BUILD_DIR} ===`);
+        execSync(`cmake --build . --config ${buildConfig}`, { stdio: 'inherit' });
 
         // Return to script directory
         process.chdir(__dirname);
@@ -72,8 +82,8 @@ const VCPKG_CMAKE = 'G:\\Documents\\Github\\vcpkg\\scripts\\buildsystems\\vcpkg.
         safeRemove(DIST_DIR);
         fs.mkdirSync(DIST_DIR, { recursive: true });
 
-        // 5) Copy main .exe
-        const builtExe = path.join(BUILD_DIR, `${PROJECT_NAME}.exe`);
+        // 5) Copy main .exe (Visual Studio generator puts config-specific output in a subfolder)
+        const builtExe = path.join(BUILD_DIR, buildConfig, `${PROJECT_NAME}.exe`);
         const distExe = path.join(DIST_DIR, `${PROJECT_NAME}.exe`);
         copyFile(builtExe, distExe);
 

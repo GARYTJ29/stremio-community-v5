@@ -1,0 +1,22 @@
+# CMake / MSVC build output (any out-of-source build dir, e.g. cmake-build-release-x64)
+cmake-build-*/
+
+# build/ should only contain the deploy_windows.js-style scripts; ignore anything
+# CMake or an IDE drops in there (CMakeFiles/, CMakeCache.txt, *.sln, *.vcxproj, Release/, x64/...)
+/build/*
+!/build/*.js
+
+# Packaged distribution output
+/dist/
+/utils/Stremio*.exe
+/utils/Stremio*.7z
+
+# Downloaded at build time, not part of source (see docs/BUILD.md)
+/server.js
+/utils/windows/server.js
+
+# Built locally from source, not vendored in-repo (see docs/BUILD.md step 4)
+/deps/discord-rpc/
+
+# Editor
+/.vscode/

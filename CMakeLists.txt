@@ -68,6 +68,9 @@ set(SOURCES
 
 add_executable(${PROJECT_NAME} WIN32 ${SOURCES})
 
+if(MSVC)
+    target_compile_options(${PROJECT_NAME} PRIVATE /EHsc)
+endif()
 
 target_link_libraries(${PROJECT_NAME} PRIVATE
         gdiplus.lib
