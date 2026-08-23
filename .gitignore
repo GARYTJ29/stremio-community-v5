@@ -18,5 +18,8 @@ cmake-build-*/
 # Built locally from source, not vendored in-repo (see docs/BUILD.md step 4)
 /deps/discord-rpc/
 
+#Stremio Kai
+/deps/Stremio-Kai-main/
+
 # Editor
 /.vscode/

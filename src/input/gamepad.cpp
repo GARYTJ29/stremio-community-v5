@@ -150,6 +150,20 @@ R"JS((function () {
         el.dispatchEvent(new MouseEvent('mousemove', init));
     }
 
+    // The reverse. The player immerses at once on its own container's mouseleave
+    // (which also cancels the 3s re-hide timer a wake had just armed), and React
+    // derives that from a bubbled mouseout whose relatedTarget lies outside the
+    // container - so that is what this fakes. The bar still stays up while paused
+    // or with a menu open: that is the web UI's rule, not ours.
+    function sleepControls() {
+        var el = playerContainer();
+        if (!el) return;
+        el.dispatchEvent(new MouseEvent('mouseout', {
+            bubbles: true, cancelable: true, composed: true, view: window,
+            relatedTarget: document.documentElement
+        }));
+    }
+
     // --- focus -------------------------------------------------------------
     var FOCUSABLE = '[tabindex]:not([tabindex="-1"]),a[href],button:not([disabled]),' +
         'input:not([disabled]),select:not([disabled]),textarea:not([disabled])';
@@ -306,7 +320,12 @@ R"JS(
         if (e.ctrlKey || e.altKey || e.metaKey) return;
         var dir = DIRECTIONS[e.key] || DIRECTIONS[e.code];
         if (!dir) return;
-        if (inPlayer()) return;                 // arrows are seek and volume there
+        // In the player the arrows are seek and volume. Nav mode does not change
+        // that here: the control bar is walked by index in navMove() because its
+        // buttons are not tabbable, so no arrow key is sent for it. An open menu
+        // is the one case that does want the spatial search - its options are
+        // ordinary tabbable Buttons.
+        if (inPlayer() && !playerMenu()) return;
         var el = document.activeElement;
         var tag = el && el.tagName;
         if ((tag === 'INPUT' || tag === 'TEXTAREA') && (dir === 'left' || dir === 'right')) {
@@ -431,6 +450,171 @@ R"JS(
     }
 )JS",
 R"JS(
+    // --- control-bar nav mode ----------------------------------------------
+    // The control bar renders every one of its controls as a Button carrying an
+    // explicit tabindex="-1" - the web UI drives them with the mouse - so they
+    // are invisible both to FOCUSABLE above and to the spatial-navigation
+    // polyfill. Nav mode therefore walks the bar by index off its own selector,
+    // and only hands back to the spatial path once a menu is open, whose options
+    // are ordinary tabbable Buttons.
+    var CONTROL_BAR = '[class*="control-bar-container"]';
+    // "button-container" is the class the Button component itself renders. The
+    // bar's own wrappers are "control-bar-buttonS-container" and
+    // "control-bar-buttons-menu-container", so this does not catch them.
+    var CONTROL_ITEM = '[class*="button-container"]';
+    // Subtitles, audio, speed, cast, options and statistics each render as a
+    // "menu-layer"; the episode list is a "side-drawer-layer".
+    var MENU_LAYER = '[class*="menu-layer"],[class*="side-drawer-layer"]';
+    var ARROWS = { up: 'ArrowUp', down: 'ArrowDown', left: 'ArrowLeft', right: 'ArrowRight' };
+
+    function controlBar() {
+        return (playerContainer() || document).querySelector(CONTROL_BAR);
+    }
+
+    // Deliberately not isNavigable(): the whole bar sits at opacity 0 while the
+    // overlay is immersed and fades in over 200ms, so a check that waited on
+    // opacity would find nothing on the frame X is pressed.
+    function isLaidOut(el) {
+        var r = el.getBoundingClientRect();
+        if (r.width <= 1 || r.height <= 1) return false;
+        var s = window.getComputedStyle(el);
+        return s.visibility !== 'hidden' && s.display !== 'none';
+    }
+
+    // In bar order: play/pause first, then mute, then the menu group (speed,
+    // cast, subtitles, audio, episodes, aspect ratio, options). On a narrow
+    // layout that group collapses behind a single button and the rest go
+    // display:none, which is why each one is checked rather than counted.
+    function controlItems() {
+        var out = [];
+        var bar = controlBar();
+        if (!bar) return out;
+        var nodes = bar.querySelectorAll(CONTROL_ITEM);
+        for (var i = 0; i < nodes.length; i++) {
+            if (nodes[i].classList.contains('disabled')) continue;
+            if (!isLaidOut(nodes[i])) continue;
+            out.push(nodes[i]);
+        }
+        return out;
+    }
+
+    function playerMenu() {
+        var nodes = document.querySelectorAll(MENU_LAYER);
+        for (var i = 0; i < nodes.length; i++) {
+            if (isVisible(nodes[i])) return nodes[i];
+        }
+        return null;
+    }
+
+    function focusEl(el) {
+        if (!el) return false;
+        try { el.focus({ preventScroll: true }); } catch (e) { el.focus(); }
+        return document.activeElement === el;
+    }
+
+    // Start on the option already in effect where the menu marks one, so the ring
+    // lands somewhere meaningful instead of at the top of a long track list.
+    function focusMenu(menu) {
+        var nodes = menu.querySelectorAll(FOCUSABLE);
+        var first = null;
+        for (var i = 0; i < nodes.length; i++) {
+            if (!isNavigable(nodes[i])) continue;
+            if (nodes[i].classList.contains('selected')) return focusEl(nodes[i]);
+            if (!first) first = nodes[i];
+        }
+        return focusEl(first);
+    }
+
+    // Put the ring somewhere to begin with - play/pause, being the first control
+    // in the bar - so the first d-pad press has something to move from.
+    function seedNav(attempt) {
+        if (!navMode || !inPlayer()) return;
+        var menu = playerMenu();
+        if (menu && focusMenu(menu)) return;
+        var items = controlItems();
+        if (items.length && focusEl(items[0])) return;
+        // The bar is only mounted while the overlay is awake, so it can still be
+        // a frame or two behind the wakeControls() that preceded this.
+        if (attempt < 8) window.setTimeout(function () { seedNav(attempt + 1); }, 60);
+    }
+
+    // Where the ring sits, if it is on something nav mode owns.
+    function navFocus() {
+        var el = document.activeElement;
+        if (!el || el === document.body || !document.contains(el)) return null;
+        var menu = playerMenu();
+        if (menu && menu.contains(el)) return el;
+        var bar = controlBar();
+        return bar && bar.contains(el) ? el : null;
+    }
+
+    function navMove(dir) {
+        var menu = playerMenu();
+        if (menu) {
+            // Menu options are tabbable, so hand over to the spatial search -
+            // onArrowKey picks the key up and moves from wherever the ring is.
+            if (menu.contains(document.activeElement)) sendKey(ARROWS[dir]);
+            else focusMenu(menu);
+            return;
+        }
+        var items = controlItems();
+        if (!items.length) return;
+        var at = -1;
+        for (var i = 0; i < items.length; i++) {
+            if (items[i] === document.activeElement) { at = i; break; }
+        }
+        if (at < 0) { focusEl(items[0]); return; }
+        if (dir === 'up' || dir === 'down') {
+            // The bar is a single row, so there is nothing above or below to move
+            // to - leave up and down on volume, where they still do something.
+            sendKey(ARROWS[dir]);
+            return;
+        }
+        var next = at + (dir === 'right' ? 1 : -1);
+        if (next >= 0 && next < items.length) focusEl(items[next]);
+    }
+
+    // In the player the d-pad is seek and volume, unless nav mode is on or a menu
+    // is open - either way there is then a ring on screen to move instead. (The
+    // UI disables its own seek and volume shortcuts while a menu is open anyway.)
+    function playerArrow(dir) {
+        if (navMode || playerMenu()) navMove(dir);
+        else sendKey(ARROWS[dir]);
+    }
+
+    // The player's Escape shortcut closes its menus *and* navigates back in the
+    // same press, so B cannot use it to dismiss one. Close it the way the UI
+    // itself does instead: onContainerMouseDown drops every menu unless the event
+    // carries a "...ClosePrevented" flag, which only the opening button sets.
+    function closePlayerMenu() {
+        var el = playerContainer();
+        if (!el || !playerMenu()) return false;
+        var r = el.getBoundingClientRect();
+        el.dispatchEvent(new MouseEvent('mousedown', {
+            bubbles: true, cancelable: true, composed: true, view: window,
+            clientX: Math.round(r.left + r.width / 2),
+            clientY: Math.round(r.top + r.height / 2)
+        }));
+        // The ring was inside the menu that just went away; put it back on the bar.
+        if (navMode) window.setTimeout(function () { seedNav(0); }, 120);
+        return true;
+    }
+
+    function setNavMode(on) {
+        navMode = !!on;
+        if (navMode) {
+            wakeControls();
+            seedNav(0);
+            return;
+        }
+        // Drop the ring, then let the overlay hide again rather than waiting out
+        // the inactivity timer the wake at the top of act() just re-armed.
+        var el = document.activeElement;
+        if (el && el.blur) el.blur();
+        sleepControls();
+    }
+)JS",
+R"JS(
     // --- pad state ---------------------------------------------------------
     var BUTTONS = ['A', 'B', 'X', 'Y', 'LB', 'RB', 'LT', 'RT', 'BACK', 'START',
                    'L3', 'R3', 'UP', 'DOWN', 'LEFT', 'RIGHT', 'GUIDE'];
@@ -441,6 +625,12 @@ R"JS(
     var padIndex = -1;
     var active = false;
     var rafId = 0;
+    // Read fresh each tick from that frame's raw pad state (not the `held` map, which
+    // is written by BUTTONS-array order and would race a same-frame RB+A press).
+    var rbHeld = false;
+    // X toggles this in-player: while on, the d-pad walks the control bar (play,
+    // mute, speed, cast, subtitles, audio...) instead of driving seek and volume.
+    var navMode = false;
 
     function currentPad() {
         var pads = navigator.getGamepads();
@@ -501,46 +691,75 @@ R"JS(
 
         switch (name) {
         case 'UP':
-            if (player) sendKey('ArrowUp');            // volume up
+            if (player) playerArrow('up');                         // volume up
             else if (ensureFocus()) sendKey('ArrowUp');
             break;
         case 'DOWN':
-            if (player) sendKey('ArrowDown');          // volume down
+            if (player) playerArrow('down');                       // volume down
             else if (ensureFocus()) sendKey('ArrowDown');
             break;
         case 'LEFT':
-            if (player) sendKey('ArrowLeft');          // seek back
+            if (player) playerArrow('left');                       // seek back
             else if (ensureFocus()) sendKey('ArrowLeft');
             break;
         case 'RIGHT':
-            if (player) sendKey('ArrowRight');         // seek forward
+            if (player) playerArrow('right');                      // seek forward
             else if (ensureFocus()) sendKey('ArrowRight');
             break;
         case 'A':
-            if (player) sendKey('Space');              // play / pause
-            else if (ensureFocus()) sendKey('Enter');  // activate
+            if (player) {
+                if (rbHeld) {
+                    // RB+A: skip intro/outro. Safe to send unconditionally - same
+                    // "perform-skip" script-message the Tab key and the on-screen
+                    // skip button send; notify_skip.lua no-ops when nothing's skippable.
+                    shell('mpv-command', ['script-message-to', 'notify_skip', 'perform-skip']);
+                } else if (navFocus()) {
+                    // Button listens for Enter and clicks itself. This covers a
+                    // menu option too, whether or not nav mode put the ring there.
+                    sendKey('Enter');
+                } else if (navMode) {
+                    seedNav(0);                        // ring not placed yet
+                } else {
+                    sendKey('Space');                  // play / pause
+                }
+            } else if (ensureFocus()) sendKey('Enter');  // activate
             break;
         case 'B':
             // Escape is back / close / exit-player on the web UI; elsewhere
-            // (an addon page) nothing listens for it, so leave via history.
+            // (an addon page) nothing listens for it, so leave via history. An open
+            // player menu is closed on its own first - the player's Escape would
+            // otherwise close it and exit the player in the one press.
+            if (player && closePlayerMenu()) break;
             if (player || isStremioUi()) sendKey('Escape');
             else window.history.back();
             break;
         case 'X':
-            if (player) sendKey('KeyS');               // subtitles menu
-            else goto('#/search');
+            if (player) {
+                if (rbHeld) {
+                    sendKey('KeyR');                    // RB+X: playback speed menu
+                } else {
+                    // Toggle control-bar nav mode: the d-pad walks play/mute/speed/
+                    // cast/subtitles/audio/aspect/options instead of driving seek and
+                    // volume. Pressing X again drops the ring and puts the overlay
+                    // back to sleep.
+                    setNavMode(!navMode);
+                }
+            } else goto('#/search');
             break;
         case 'Y':
-            if (player) sendKey('KeyA');               // audio track menu
-            else goto('#/');
+            if (player) {
+                if (rbHeld) sendKey('KeyA');            // RB+Y: audio track menu
+                else sendKey('KeyS');                   // subtitles menu
+            } else goto('#/');
             break;
         case 'LB':
-            if (player) sendKey('ArrowLeft', { shift: true });
-            else cycleTab(-1);
+            if (!player) cycleTab(-1);                 // reserved in-player (no seek)
             break;
         case 'RB':
-            if (player) sendKey('ArrowRight', { shift: true });
-            else cycleTab(1);
+            // In-player, RB is only a modifier for RB+A (skip), RB+Y (audio), and
+            // RB+X (speed); it does nothing held alone. Outside the player it still
+            // cycles tabs.
+            if (!player) cycleTab(1);
             break;
         case 'LT':
             if (player) sendKey('ArrowLeft');          // held = rewind
@@ -608,6 +827,9 @@ R"JS(
         var root = document.documentElement;
         if (root && root.classList) root.classList.toggle(ACTIVE_CLASS, on);
         if (on) toast('Controller connected');
+        // Lets notify_skip.lua swap its skip-button hint between "Press Tab" and
+        // "RB+A" depending on whether a pad is actually driving the player.
+        shell('mpv-command', ['script-message-to', 'notify_skip', 'gamepad-active', on ? 'true' : 'false']);
     }
 
     function tick() {
@@ -625,6 +847,7 @@ R"JS(
 
         var now = window.performance ? performance.now() : Date.now();
         var state = readPad(pad);
+        rbHeld = !!state.RB;
         for (var i = 0; i < BUTTONS.length; i++) {
             handleButton(BUTTONS[i], !!state[BUTTONS[i]], now);
         }
@@ -648,6 +871,7 @@ R"JS(
     window.addEventListener('gamepaddisconnected', function () {
         padIndex = -1;
         held = {};
+        navMode = false;
     });
 
     // A route change drops focus, which would leave the d-pad dead until the
@@ -655,6 +879,7 @@ R"JS(
     window.addEventListener('hashchange', function () {
         playerEl = null;
         scrollCache = { el: null, at: 0 };
+        navMode = false;
         restartRepeats();
         if (!active || inPlayer()) return;
         window.setTimeout(function () { if (active && !inPlayer()) ensureFocus(); }, 350);

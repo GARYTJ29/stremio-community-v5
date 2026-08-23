@@ -34,10 +34,19 @@ const SERVER_JS = path.join(SOURCE_DIR, 'utils', 'windows', 'server.js');
 const STREMIO_RUNTIME_EXE = path.join(SOURCE_DIR, 'utils', 'windows', 'stremio-runtime.exe');
 const FFMPEG_FOLDER = path.join(SOURCE_DIR, 'utils', 'windows', 'ffmpeg');
 const MPV_FOLDER = path.join(SOURCE_DIR, 'utils', 'mpv', 'anime4k');
+const STREMIO_KAI_EXTRAS_FOLDER = path.join(SOURCE_DIR, 'utils', 'mpv', 'stremio-kai-extras');
+const THUMBFAST_ARCHIVE = path.join(SOURCE_DIR, 'utils', 'mpv', 'thumbfast', 'thumbfast.7z');
 const DEFAULT_SETTINGS_FOLDER = path.join(SOURCE_DIR, 'utils', 'stremio');
 
 // Default Paths
 const DEFAULT_NSIS = 'C:\\Program Files (x86)\\NSIS\\makensis.exe';
+// Common 7-Zip install paths, used both for the portable-zip step and for
+// extracting THUMBFAST_ARCHIVE (it bundles a standalone mpv.exe, so it's
+// kept zipped in the repo and only extracted at dist-build time).
+const COMMON_7Z_PATHS = [
+    'C:\\Program Files\\7-Zip\\7z.exe',
+    'C:\\Program Files (x86)\\7-Zip\\7z.exe'
+];
 //VCPKG
 const VCPKG_TRIPLET = ARCH === 'x86' ? 'x86-windows-static' : 'x64-windows-static';
 // NOTE: deliberately NOT reading the VCPKG_ROOT env var -- vcvars64.bat sets its own
@@ -99,7 +108,11 @@ const VCPKG_CMAKE = path.join(VCPKG_ROOT, 'scripts', 'buildsystems', 'vcpkg.cmak
         copyFile(STREMIO_RUNTIME_EXE, path.join(DIST_DIR, 'stremio-runtime.exe'));
         copyFolderContents(FFMPEG_FOLDER, DIST_DIR);
         copyFolderContentsPreservingStructure(MPV_FOLDER, DIST_DIR);
+        copyFolderContentsPreservingStructure(STREMIO_KAI_EXTRAS_FOLDER, DIST_DIR);
         copyFolderContentsPreservingStructure(DEFAULT_SETTINGS_FOLDER, CONFIG_DIR);
+        // Extracted last: its bundled stremio-settings.ini (ThumbFastHeight=110) is meant
+        // to win over the plain default copied above, enabling ThumbFast out of the box.
+        extractThumbfastArchive();
 
         console.log('\n=== dist\\win preparation complete. ===');
 
@@ -141,6 +154,40 @@ function copyFile(src, dest) {
     }
     fs.copyFileSync(src, dest);
     console.log(`Copied: ${src} -> ${dest}`);
+}
+
+function find7zExecutable() {
+    if (commandExists('7z')) return '7z';
+    const found = COMMON_7Z_PATHS.find(fs.existsSync);
+    return found ? `"${found}"` : null;
+}
+
+function commandExists(command) {
+    try {
+        execSync(`where ${command}`, { stdio: 'ignore' });
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+/**
+ * Extracts THUMBFAST_ARCHIVE (thumbfast.lua/conf + a bundled standalone mpv.exe,
+ * which thumbfast spawns to render thumbnails) directly into DIST_DIR. Kept zipped
+ * in the repo (the mpv.exe alone is ~113MB unpacked) and only extracted here.
+ */
+function extractThumbfastArchive() {
+    if (!fs.existsSync(THUMBFAST_ARCHIVE)) {
+        console.warn(`Warning: missing archive: ${THUMBFAST_ARCHIVE}`);
+        return;
+    }
+    const sevenZipPath = find7zExecutable();
+    if (!sevenZipPath) {
+        console.warn('Warning: 7z.exe not found; skipping ThumbFast extraction (thumbnail previews will be unavailable).');
+        return;
+    }
+    console.log(`\nExtracting ThumbFast archive into ${DIST_DIR}...`);
+    execSync(`${sevenZipPath} x "${THUMBFAST_ARCHIVE}" -o"${DIST_DIR}" -y`, { stdio: 'inherit' });
 }
 
 /**
