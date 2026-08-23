@@ -45,6 +45,26 @@ const STREMIO_KAI_EXTRAS_FOLDER = path.join(SOURCE_DIR, 'utils', 'mpv', 'stremio
 const THUMBFAST_ARCHIVE = path.join(SOURCE_DIR, 'utils', 'mpv', 'thumbfast', 'thumbfast.7z');
 const DEFAULT_SETTINGS_FOLDER = path.join(SOURCE_DIR, 'utils', 'stremio');
 
+// Optional: VapourSynth core + SVP's svpflow plugin, needed for SVP frame interpolation.
+// Not vendored in-repo -- copy into deps/vapoursynth/ from a local install (see docs/BUILD.md).
+// 64-bit only; skipped entirely for --x86 builds.
+const VAPOURSYNTH_DEPS_DIR = path.join(SOURCE_DIR, 'deps', 'vapoursynth');
+const VAPOURSYNTH_REQUIRED_FILES = [
+    'VSScript.dll',
+    'vapoursynth.dll',
+    'portable.vs',
+    // Embedded CPython that VSScript.dll needs to run .vpy scripts (see docs/BUILD.md)
+    'python3.dll',
+    'python312.dll',
+    'python312.zip',
+    'python312._pth',
+    'vapoursynth.pyd',
+    '_ctypes.pyd',
+    'libffi-8.dll',
+    path.join('vs-plugins', 'svpflow1_vs.dll'),
+    path.join('vs-plugins', 'svpflow2_vs.dll')
+];
+
 // Default Paths
 const DEFAULT_NSIS = 'C:\\Program Files (x86)\\NSIS\\makensis.exe';
 // Common 7-Zip install paths, used both for the portable-zip step and for
@@ -117,19 +137,18 @@ const VCPKG_CMAKE = path.join(VCPKG_ROOT, 'scripts', 'buildsystems', 'vcpkg.cmak
         copyFile(MPV_DLL, path.join(DIST_DIR, path.basename(MPV_DLL)));
         copyFile(SERVER_JS, path.join(DIST_DIR, path.basename(SERVER_JS)));
 
-
-
-
+        // 7) Bundle VapourSynth/SVP runtime (optional, x64 only)
+        bundleVapourSynth();
         // 8) Flatten stremio-runtime, ffmpeg
         console.log('Flattening DS folder, stremio-runtime, ffmpeg...');
         copyFile(STREMIO_RUNTIME_EXE, path.join(DIST_DIR, 'stremio-runtime.exe'));
         copyFolderContents(FFMPEG_FOLDER, DIST_DIR);
         copyFolderContentsPreservingStructure(MPV_FOLDER, DIST_DIR);
         copyFolderContentsPreservingStructure(STREMIO_KAI_EXTRAS_FOLDER, DIST_DIR);
-        copyFolderContentsPreservingStructure(DEFAULT_SETTINGS_FOLDER, CONFIG_DIR);
-        // Extracted last: its bundled stremio-settings.ini (ThumbFastHeight=110) is meant
-        // to win over the plain default copied above, enabling ThumbFast out of the box.
         extractThumbfastArchive();
+        // Copied last: the ThumbFast archive ships its own stale stremio-settings.ini
+        // that would otherwise clobber the defaults in utils/stremio/.
+        copyFolderContentsPreservingStructure(DEFAULT_SETTINGS_FOLDER, CONFIG_DIR);
 
         console.log('\n=== dist\\win preparation complete. ===');
 
@@ -189,6 +208,33 @@ function copyFile(src, dest) {
     }
     fs.copyFileSync(src, dest);
     console.log(`Copied: ${src} -> ${dest}`);
+}
+
+/**
+ * Copies the VapourSynth/SVP runtime (deps/vapoursynth/) next to stremio.exe, where both
+ * profile-manager.lua's availability probe and mpv's delay-load resolve it. No-op if any
+ * required file is missing; the build then ships without SVP interpolation.
+ */
+function bundleVapourSynth() {
+    if (ARCH !== 'x64') {
+        console.log('Skipping VapourSynth/SVP bundling: deps/vapoursynth/ is x64-only.');
+        return;
+    }
+    const missing = VAPOURSYNTH_REQUIRED_FILES.filter(
+        f => !fs.existsSync(path.join(VAPOURSYNTH_DEPS_DIR, f))
+    );
+    if (missing.length > 0) {
+        console.log('Skipping VapourSynth/SVP bundling: deps/vapoursynth/ not set up ' +
+            `(missing ${missing.join(', ')}). SVP frame interpolation will be unavailable ` +
+            'in this build -- see docs/BUILD.md if you want it included.');
+        return;
+    }
+    console.log('Bundling VapourSynth/SVP runtime from deps/vapoursynth/...');
+    for (const relFile of VAPOURSYNTH_REQUIRED_FILES) {
+        const dest = path.join(DIST_DIR, relFile);
+        fs.mkdirSync(path.dirname(dest), { recursive: true });
+        copyFile(path.join(VAPOURSYNTH_DEPS_DIR, relFile), dest);
+    }
 }
 
 function find7zExecutable() {

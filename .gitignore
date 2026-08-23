@@ -20,6 +20,11 @@ cmake-build-*/
 
 #Stremio Kai
 /deps/Stremio-Kai-main/
+deps/VapourSynth64-Portable-R79/
+deps/SVP 4/mpv64/
+
+# VapourSynth/SVP runtime, copied by hand from a local install (see docs/BUILD.md)
+/deps/vapoursynth/
 
 # Editor
 /.vscode/

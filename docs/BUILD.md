@@ -66,7 +66,7 @@ else, set the `STREMIO_VCPKG_ROOT` environment variable instead of editing the s
 set STREMIO_VCPKG_ROOT=D:\dev\vcpkg
 ```
 
-> Don't use the plain `VCPKG_ROOT` env var for this — `vcvars64.bat` (step 9) sets its
+> Don't use the plain `VCPKG_ROOT` env var for this — `vcvars64.bat` (step 10) sets its
 > own `VCPKG_ROOT` pointing at VS Build Tools' bundled, empty vcpkg instance, which
 > would silently shadow a real install of this project's dependencies. That's exactly
 > why the script reads a differently-named variable.
@@ -219,7 +219,101 @@ The deploy script also expects, already present under `utils/windows/`:
 
 If any are missing, see [WINDOWS.md](WINDOWS.md) for where to source them.
 
-## 9. Build
+## 9. Optional: SVP frame interpolation (VapourSynth)
+
+`utils/mpv/stremio-kai-extras`'s `svp_anime.vpy`/`svp_cinema.vpy` (SVP frame interpolation)
+need VapourSynth's core (`VSScript.dll`, `vapoursynth.dll`) plus SVP's `svpflow1_vs.dll`/
+`svpflow2_vs.dll` plugin, none of which are vendored in this repo (licensing + size). This
+step is entirely optional — skip it and the build still succeeds; `profile-manager.lua`
+detects the missing DLL at runtime and just disables SVP for that session instead of
+crashing, so nothing else in Kai Extras (Anime4K shaders, notify_skip, player-clock, etc.)
+is affected.
+
+> To debug any of this, set `DEBUG_LOG = true` in
+> `portable_config/script-opts/svp.conf` and replay: `profile-manager.lua` then points
+> mpv's `log-file` at `portable_config/mpv-debug.log`. Stremio is a GUI-subsystem process
+> with no console, so with that off there is nowhere for mpv's messages to go and they are
+> discarded. Search the log for `[SVP]` — it records the gating decision and whether the
+> filter actually survived — and for `Script evaluation failed` for VapourSynth errors.
+> (`DEBUG_OVERLAY` in the same file is the separate, burned-into-the-frame status text.)
+>
+> The load chain here has multiple silent-failure points, each looking identical from the
+> outside (nothing plays, no error, no overlay, no crash) until you check exactly what's
+> loaded in the process:
+> `Get-Process stremio | Select-Object -ExpandProperty Modules | Where-Object { $_.ModuleName -match 'vsscript|vapoursynth|svpflow|python' }`
+> during playback.
+> - Only `VSScript.dll` loaded → it embeds its own CPython to run a `.vpy` script, and its
+>   own hard imports are satisfiable without `python312.*` present, so it loads "fine" but
+>   script init fails before ever touching `vapoursynth.dll`. Need `python3.dll`,
+>   `python312.dll`, `python312.zip`, `python312._pth`.
+> - `VSScript.dll` + `python3.dll`/`python312.dll` loaded but not `vapoursynth.dll` or
+>   `svpflow*` → Python itself started fine, but the script's `import vapoursynth as vs`
+>   has nothing to resolve to. Need `vapoursynth.pyd` (the actual Python extension module —
+>   distinct from `vapoursynth.dll`, the core it wraps) sitting next to `python312.dll` so
+>   it's importable.
+> - `python312.dll` loaded and mpv logs `Could not initialize VapourSynth scripting`
+>   (that message means `getVSScriptAPI()` returned NULL — the interpreter started but
+>   `import vapoursynth` threw, *before* your `.vpy` is ever read, so the script and its
+>   `DEBUG_OVERLAY` are not the culprit). Usually a missing binary stdlib module: check
+>   `_ctypes.pyd` and `libffi-8.dll` are present. mpv swallows the Python traceback, so to
+>   see the real error, load `python312.dll` yourself, `Py_InitializeEx(0)`, then
+>   `PyRun_SimpleString("import vapoursynth")` and read stderr.
+> - All of the above loaded but not `svpflow1_vs.dll`/`svpflow2_vs.dll` → check
+>   `vs-plugins\` actually has both files and `portable.vs` exists beside `vapoursynth.dll`
+>   (portable-mode autoload).
+
+If you want SVP included in your build:
+
+1. Install [VapourSynth](https://www.vapoursynth.com/) (or just `pip install vapoursynth`)
+   and [SVP4](https://www.svp-team.com/) (the full desktop app — its installer bundles
+   VapourSynth's core alongside the `svpflow` plugin).
+2. Copy these 12 files from your SVP4 install into `deps/vapoursynth/` in this repo,
+   preserving the `vs-plugins` subfolder (this layout mirrors VapourSynth's own
+   "portable" plugin-autoload convention, so nothing needs to call `LoadPlugin`
+   explicitly from the `.vpy` scripts):
+
+   ```
+   deps/vapoursynth/VSScript.dll              <- from SVP 4\mpv64\VSScript.dll
+   deps/vapoursynth/vapoursynth.dll            <- from SVP 4\mpv64\vapoursynth.dll
+   deps/vapoursynth/vapoursynth.pyd            <- from SVP 4\mpv64\vapoursynth.pyd
+   deps/vapoursynth/portable.vs                <- from SVP 4\mpv64\portable.vs (empty marker file)
+   deps/vapoursynth/python3.dll                <- from SVP 4\mpv64\python3.dll
+   deps/vapoursynth/python312.dll              <- from SVP 4\mpv64\python312.dll
+   deps/vapoursynth/python312.zip              <- from SVP 4\mpv64\python312.zip
+   deps/vapoursynth/python312._pth             <- from SVP 4\mpv64\python312._pth
+   deps/vapoursynth/_ctypes.pyd                <- from SVP 4\mpv64\_ctypes.pyd
+   deps/vapoursynth/libffi-8.dll               <- from SVP 4\mpv64\libffi-8.dll
+   deps/vapoursynth/vs-plugins/svpflow1_vs.dll <- from SVP 4\plugins64\svpflow1_vs.dll
+   deps/vapoursynth/vs-plugins/svpflow2_vs.dll <- from SVP 4\plugins64\svpflow2_vs.dll
+   ```
+
+   `_ctypes.pyd`/`libffi-8.dll` are easy to miss: `python312.zip` holds the *pure-Python*
+   stdlib only, so `ctypes` — which `vapoursynth.pyd` imports at module init — is in the
+   zip but its `_ctypes` binary half is not. Take them from the same `SVP 4\mpv64` folder
+   as `python312.dll`; a `.pyd` is tied to one exact CPython ABI, so a copy from a
+   system-wide 3.13 (e.g. `...\Python313\site-packages\`) will not load here.
+
+   The `python312.*` files are SVP4's own embedded, isolated CPython (its `._pth` file
+   restricts `sys.path` to just `python312.zip` and its own directory, and skips `site`
+   entirely) — it does **not** touch or conflict with any Python you have separately
+   installed or `pip install`ed system-wide.
+
+   (Default SVP4 install path: `C:\Program Files\SVP 4`.) `deps/vapoursynth/` is
+   git-ignored — it's a local, per-machine copy, not part of the source tree.
+3. Build normally. `deploy_windows.js` checks for all 12 files and, if present, copies
+   them straight into `dist\win-x64` next to `stremio.exe` (not into `portable_config` —
+   that's deliberate: both `profile-manager.lua`'s availability probe and mpv's own
+   delay-load resolve `VSScript.dll` by searching the exe's own directory and `PATH`,
+   never `portable_config`). If any file is missing, it logs which one and skips
+   bundling entirely rather than shipping a half-working SVP setup.
+
+x64 only — `deps/vapoursynth/` isn't consulted at all for `--x86` builds.
+
+> MVTools (the `core.mv` fallback path inside `svp_anime.vpy`, used if the primary SVP
+> path throws) isn't covered by the above and isn't bundled either; SVP's own `svpflow`
+> plugin is the primary path and works without it.
+
+## 10. Build
 
 Run this inside the **x64 Native Tools Command Prompt for VS 2022** (or an equivalent
 shell with `vcvars64.bat` sourced), with `cmake.exe` on `PATH`:
@@ -262,7 +356,7 @@ On success you get:
 > installer/portable archive. The backup is left parked at
 > `dist\.webview2-backup-x64`; the next plain dev build picks it back up.
 
-## 10. Clean rebuild
+## 11. Clean rebuild
 
 `build/` holds both the CMake output and the maintenance scripts
 (`build_checksums.js` etc.) side by side — **never delete the whole folder**. Clear
@@ -303,5 +397,6 @@ line and just delete `build\Release` (or `build\Debug`) plus `dist\`.
 | `server.js` download URL | WINDOWS.md, stale/dead | use `https://dl.strem.io/four/master/server.js` |
 | Missing `/EHsc` under Ninja | n/a — real bug | fixed in `CMakeLists.txt` (step 7); moot now that Ninja isn't used, but the fix is harmless to keep |
 | NsProcess plugin | WINDOWS.md mentions it exists, not how to install | copy into NSIS install dir (step 6) |
-| Stray CMake output cluttering `build/` | not documented | see step 10 — clean only the generated files, never the whole folder |
-| `dist\win-x64` disappearing after build | not documented | likely AV quarantine — see the note in step 9 |
+| Stray CMake output cluttering `build/` | not documented | see step 11 — clean only the generated files, never the whole folder |
+| `dist\win-x64` disappearing after build | not documented | likely AV quarantine — see the note in step 10 |
+| SVP frame interpolation deps not vendored | not documented | copy into `deps/vapoursynth/` yourself (step 9); build/runtime both degrade gracefully without it |

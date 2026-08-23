@@ -16,7 +16,6 @@
 
 import logging
 import os
-import multiprocessing
 import math
 import sys
 from fractions import Fraction
@@ -74,7 +73,10 @@ config = load_config()
 
 # Apply to core
 core = vs.core
-cpu = multiprocessing.cpu_count()
+# os.cpu_count(), not multiprocessing.cpu_count(): multiprocessing drags in socket ->
+# _socket, which isn't in the embedded CPython's pure-Python stdlib zip and raised
+# ModuleNotFoundError, silently disabling the filter.
+cpu = os.cpu_count() or 4
 
 # threads: 'auto' => half cores capped at 6; explicit int otherwise
 nt_cfg = config.get('num_threads', 'auto')
@@ -96,6 +98,16 @@ except Exception:
     mc = 2048
 mc = max(128, min(16384, mc))
 core.max_cache_size = mc
+
+def vs_log(msg):
+    """
+    Route a message into mpv's log. There is no `mp` module inside VapourSynth,
+    so core.log_message() is used instead -- mpv forwards it into its own log.
+    """
+    try:
+        core.log_message(vs.MESSAGE_TYPE_WARNING, "[svp_anime] " + str(msg))
+    except Exception:
+        print("[svp_anime] " + str(msg), file=sys.stderr)
 
 # DEBUG_OVERLAY flag
 DEBUG_OVERLAY = bool(config.get('DEBUG_OVERLAY', False))
@@ -123,9 +135,11 @@ def add_method_overlay(clip):
     """
     try:
         txt = f"SVP | {overlay_status} | Method: {current_method}"
-        # alignment=7 places it bottom-right; change alignment if you prefer
+        # Numpad alignment: 7 = top-left, 9 = top-right, 1 = bottom-left, 3 = bottom-right.
         return core.text.Text(clip, txt, alignment=7)
-    except Exception:
+    except Exception as e:
+        vs_log("DEBUG_OVERLAY enabled but core.text.Text failed: "
+               f"{type(e).__name__}: {e} -- overlay skipped")
         return clip
 
 def force_memory_cleanup():
@@ -173,7 +187,7 @@ def prepare_clip_svp(clip, params):
             matrix_in = first_frame.props.get('_Matrix', 1)
             range_in = first_frame.props.get('_ColorRange', 1)
         except Exception as e:
-            mp.msg.warn("Prop access error in prepare_clip_svp: " + str(e) + " - using defaults")
+            vs_log("Prop access error in prepare_clip_svp: " + str(e) + " - using defaults")
         finally:
             if first_frame is not None:
                 del first_frame
@@ -237,7 +251,7 @@ def interpolate_mvtools(clip, target_fps):
             matrix_in = first_frame.props.get('_Matrix', 1)
             range_in = first_frame.props.get('_ColorRange', 1)
         except Exception as e:
-            mp.msg.warn("Prop access error in interpolate_mvtools: " + str(e) + " - using defaults")
+            vs_log("Prop access error in interpolate_mvtools: " + str(e) + " - using defaults")
         finally:
             if first_frame is not None:
                 del first_frame
@@ -330,7 +344,7 @@ def process_interpolation(clip):
                     matrix_in = first_frame.props.get('_Matrix', 1)
                     range_in = first_frame.props.get('_ColorRange', 1)
                 except Exception as e:
-                    mp.msg.warn("Prop access error in fallback: " + str(e) + " - using defaults")
+                    vs_log("Prop access error in fallback: " + str(e) + " - using defaults")
                 finally:
                     if first_frame is not None:
                         del first_frame
@@ -359,7 +373,7 @@ def process_interpolation(clip):
                         matrix_in = first_frame.props.get('_Matrix', 1)
                         range_in = first_frame.props.get('_ColorRange', 1)
                     except Exception as e:
-                        mp.msg.warn("Prop access error in safest fallback: " + str(e) + " - using defaults")
+                        vs_log("Prop access error in safest fallback: " + str(e) + " - using defaults")
                     finally:
                         if first_frame is not None:
                             del first_frame

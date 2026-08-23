@@ -1,10 +1,17 @@
 #include "player.h"
 #include <iostream>
 #include <cctype>
+#include <mutex>
+#include <shared_mutex>
 #include "../core/globals.h"
 #include "../utils/crashlog.h"
 #include "../utils/helpers.h"
 #include "../ui/mainwindow.h"
+
+// Guards g_mpv against CleanupMPV() destroying it while a detached command thread
+// is still using the handle -- libmpv requires mpv_terminate_destroy() never run
+// concurrently with another thread on the same handle.
+static std::shared_mutex g_mpvMutex;
 
 // Helper for mpv node => JSON
 static nlohmann::json mpvNodeToJson(const mpv_node* node);
@@ -166,8 +173,11 @@ void HandleMpvEvents()
         case MPV_EVENT_SHUTDOWN:
         {
             std::cout<<"mpv EVENT_SHUTDOWN => terminate\n";
-            mpv_terminate_destroy(g_mpv);
-            g_mpv=nullptr;
+            std::unique_lock lock(g_mpvMutex);
+            if(g_mpv){
+                mpv_terminate_destroy(g_mpv);
+                g_mpv=nullptr;
+            }
             break;
         }
         default:
@@ -180,6 +190,7 @@ void HandleMpvEvents()
 void HandleMpvCommand(const std::vector<std::string>& args)
 {
     std::thread([args](){
+        std::shared_lock lock(g_mpvMutex);
         if(!g_mpv || args.empty()) return;
         std::vector<const char*> cargs;
         for(auto &s: args) {
@@ -193,6 +204,7 @@ void HandleMpvCommand(const std::vector<std::string>& args)
 void HandleMpvSetProp(const std::vector<std::string>& args)
 {
     std::thread([args](){
+        std::shared_lock lock(g_mpvMutex);
         if(!g_mpv || args.size()<2) return;
         std::string val=args[1];
         if(val=="true")  val="yes";
@@ -204,6 +216,7 @@ void HandleMpvSetProp(const std::vector<std::string>& args)
 void HandleMpvObserveProp(const std::vector<std::string>& args)
 {
     std::thread([args](){
+        std::shared_lock lock(g_mpvMutex);
         if(!g_mpv || args.empty()) return;
         std::string pname=args[0];
         g_observedProps.insert(pname);
@@ -254,6 +267,9 @@ bool InitMPV(HWND hwnd)
         return false;
     }
 
+    // Disabled for now -- not showing up as expected and not currently needed.
+    //mpv_set_property_string(g_mpv,"log-file", (utf8 + "\\LOG.txt").c_str());
+
     // Set VO
     mpv_set_option_string(g_mpv,"vo","gpu-next");
 
@@ -276,6 +292,7 @@ bool InitMPV(HWND hwnd)
 
 void CleanupMPV()
 {
+    std::unique_lock lock(g_mpvMutex);
     if(g_mpv){
         mpv_terminate_destroy(g_mpv);
         g_mpv=nullptr;

@@ -106,7 +106,7 @@ void LoadSettings()
 
     // [Security] default-deny allow-lists
     static const wchar_t* kDefCmds =
-        L"loadfile,sub-add,keypress,stop,script-message-to,cycle";
+        L"loadfile,sub-add,keypress,stop,script-message-to,script-message,cycle";
     static const wchar_t* kDefProps =
         L"pause,time-pos,speed,mute,volume,aid,sid,no-sub-ass,vo,osc,"
         L"input-default-bindings,input-vo-keyboard,sub-scale,sub-pos,sub-delay,"

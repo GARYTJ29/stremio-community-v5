@@ -249,15 +249,28 @@ void RunAutoUpdaterOnce()
                         continue; // no update needed
                     }
                 }
-                if(!DownloadFile(url, localFilePath)) {
+                // Download to a side file and verify before replacing the live one.
+                std::filesystem::path tmpFilePath = localFilePath;
+                tmpFilePath += L".download";
+                std::error_code ec;
+                std::filesystem::remove(tmpFilePath, ec);
+
+                if(!DownloadFile(url, tmpFilePath)) {
                     AppendToCrashLog("[UPDATER]: Failed to download partial file " + key);
+                    std::filesystem::remove(tmpFilePath, ec);
+                } else if(FileChecksum(tmpFilePath) != expectedChecksum) {
+                    AppendToCrashLog("[UPDATER]: Downloaded file corrupted " + localFilePath.string());
+                    std::filesystem::remove(tmpFilePath, ec);
                 } else {
-                    if(FileChecksum(localFilePath) != expectedChecksum) {
-                        AppendToCrashLog("[UPDATER]: Downloaded file corrupted " + localFilePath.string());
-                        continue;
-                    }
                     if(key=="server.js") {
                         StopNodeServer();
+                    }
+                    std::filesystem::rename(tmpFilePath, localFilePath, ec);
+                    if(ec) {
+                        AppendToCrashLog("[UPDATER]: Failed to replace " + localFilePath.string() + ": " + ec.message());
+                        std::filesystem::remove(tmpFilePath, ec);
+                    }
+                    if(key=="server.js") {
                         StartNodeServer();
                     }
                 }
