@@ -26,6 +26,13 @@ const DIST_DIR = path.join(SOURCE_DIR, 'dist', `win-${ARCH}`);
 const CONFIG_DIR = path.join(SOURCE_DIR, 'dist', `win-${ARCH}`, 'portable_config');
 const PROJECT_NAME = 'stremio';
 
+// WebView2 keeps its Chromium profile (cookies, login session, cache, etc.) in
+// <exe>.WebView2 next to the exe. It lives inside DIST_DIR, so a plain
+// safeRemove(DIST_DIR) below wipes the user's login every rebuild. Stash it
+// somewhere outside DIST_DIR for the duration of the rebuild and restore it after.
+const WEBVIEW2_DATA_DIR = path.join(DIST_DIR, `${PROJECT_NAME}.exe.WebView2`);
+const WEBVIEW2_BACKUP_DIR = path.join(SOURCE_DIR, 'dist', `.webview2-backup-${ARCH}`);
+
 // Paths to Additional Dependencies
 const MPV_DLL = ARCH === 'x86'
     ? path.join(SOURCE_DIR, 'deps', 'libmpv', 'i686', 'libmpv-2.dll')
@@ -88,8 +95,18 @@ const VCPKG_CMAKE = path.join(VCPKG_ROOT, 'scripts', 'buildsystems', 'vcpkg.cmak
 
         // 4) Prepare dist\win
         console.log(`\n=== Cleaning and creating ${DIST_DIR} ===`);
+        backupWebView2Data();
         safeRemove(DIST_DIR);
         fs.mkdirSync(DIST_DIR, { recursive: true });
+        // --installer/--portable pack DIST_DIR wholesale (NSIS's `File /r`, 7z's `\*`),
+        // so restoring the WebView2 profile here would ship the builder's login/session
+        // cookies inside the distributable. Leave it parked in WEBVIEW2_BACKUP_DIR --
+        // the next plain dev build will restore it.
+        if (!buildInstaller && !buildPortable) {
+            restoreWebView2Data();
+        } else {
+            console.log('Skipping WebView2 data restore: packaging for distribution (--installer/--portable).');
+        }
 
         // 5) Copy main .exe (Visual Studio generator puts config-specific output in a subfolder)
         const builtExe = path.join(BUILD_DIR, buildConfig, `${PROJECT_NAME}.exe`);
@@ -145,6 +162,24 @@ function safeRemove(dirPath) {
     if (fs.existsSync(dirPath)) {
         fs.rmSync(dirPath, { recursive: true, force: true });
     }
+}
+
+/**
+ * Moves the WebView2 profile folder (cookies, login session, cache) out of
+ * DIST_DIR before it gets wiped, so a rebuild doesn't log the user out.
+ */
+function backupWebView2Data() {
+    if (!fs.existsSync(WEBVIEW2_DATA_DIR)) return;
+    console.log(`Preserving WebView2 login/session data: ${WEBVIEW2_DATA_DIR}`);
+    safeRemove(WEBVIEW2_BACKUP_DIR);
+    fs.renameSync(WEBVIEW2_DATA_DIR, WEBVIEW2_BACKUP_DIR);
+}
+
+/** Moves the WebView2 profile folder back into the freshly rebuilt DIST_DIR. */
+function restoreWebView2Data() {
+    if (!fs.existsSync(WEBVIEW2_BACKUP_DIR)) return;
+    console.log(`Restoring WebView2 login/session data: ${WEBVIEW2_DATA_DIR}`);
+    fs.renameSync(WEBVIEW2_BACKUP_DIR, WEBVIEW2_DATA_DIR);
 }
 
 function copyFile(src, dest) {

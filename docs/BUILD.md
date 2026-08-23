@@ -252,6 +252,16 @@ On success you get:
 > **Windows Security → Virus & threat protection → Protection history** and add an
 > exclusion for the project folder.
 
+> **WebView2 login/session data:** `stremio.exe.WebView2` (WebView2's Chromium profile —
+> cookies, login session, cache) lives next to the exe inside `dist\win-x64`, which
+> `deploy_windows.js` wipes on every build. A plain rebuild (no `--installer`/`--portable`)
+> backs this folder up and restores it afterward, so you don't get logged out every time
+> you iterate locally. `--installer` and `--portable` builds **skip the restore** instead,
+> since both pack `dist\win-x64` wholesale into the distributable (NSIS's `File /r`, 7z's
+> `\*`) — restoring it there would ship your personal login/session cookies inside the
+> installer/portable archive. The backup is left parked at
+> `dist\.webview2-backup-x64`; the next plain dev build picks it back up.
+
 ## 10. Clean rebuild
 
 `build/` holds both the CMake output and the maintenance scripts
@@ -265,7 +275,17 @@ del /q build\CMakeCache.txt build\*.vcxproj build\*.vcxproj.filters build\*.sln 
 rmdir /s /q dist 2>nul
 
 "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat"
+node build\deploy_windows.js
+```
+
+For Installer / Portable
+
+```cmd
 node build\deploy_windows.js --installer
+```
+
+```cmd
+node build\deploy_windows.js --portable
 ```
 
 This forces a full CMake reconfigure and full recompile (no incremental/stale object
