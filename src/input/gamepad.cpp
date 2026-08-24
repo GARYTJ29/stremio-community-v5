@@ -44,7 +44,8 @@ R"JS((function () {
         scrollStep: 30,
         vibration: true,
         focusRing: true,
-        arrowNavigation: true
+        arrowNavigation: true,
+        virtualKeyboard: true
     };
     var overrides = window.__STREMIO_GAMEPAD_CONFIG__ || {};
     for (var key in overrides) {
@@ -450,6 +451,331 @@ R"JS(
     }
 )JS",
 R"JS(
+    // --- on-screen keyboard ------------------------------------------------
+    // Text fields are the one thing the pad cannot reach on its own: the web UI
+    // has no typing affordance short of a real keyboard. So pressing A on a
+    // focused input raises a grid of keys the d-pad walks, and each press is
+    // written straight into the field. It takes that deliberate press rather
+    // than opening on focus, so moving the selection through a text field on the
+    // way somewhere else leaves it alone.
+    //
+    // Rows are given as unshifted/shifted pairs of equal length, so shift is a
+    // straight index swap rather than a second layout to navigate.
+    var OSK_ID = 'stremio-gamepad-osk';
+    var OSK_ROWS = [
+        ['`1234567890-=',  '~!@#$%^&*()_+'],
+        ['qwertyuiop[]\\', 'QWERTYUIOP{}|'],
+        ['asdfghjkl;\'',   'ASDFGHJKL:"'],
+        ['zxcvbnm,./',     'ZXCVBNM<>?']
+    ];
+    // The build has no /utf-8, so this file stays ASCII and the two glyphs the
+    // panel shows are built from their code points instead.
+    var OSK_BKSP = String.fromCharCode(0x232B);   // erase-to-the-left
+    var OSK_DOT = String.fromCharCode(0x00B7);    // middle dot
+    var OSK_ACTIONS = [
+        { action: 'shift', label: 'Shift',  grow: 2 },
+        { action: 'space', label: 'Space',  grow: 6 },
+        { action: 'back',  label: OSK_BKSP, grow: 2 },
+        { action: 'clear', label: 'Clear',  grow: 2 },
+        { action: 'done',  label: 'Done',   grow: 2 }
+    ];
+    var OSK_HINT = ['A Type', 'B Close', 'X ' + OSK_BKSP, 'Y Shift',
+                    'LB/RB Cursor', 'Start Done', 'Back Clear']
+                   .join('  ' + OSK_DOT + '  ');
+
+    var oskRoot = null;        // the panel itself, kept between openings
+    var oskRows = [];          // [[el, ...], ...] in layout order, actions last
+    var oskField = null;       // the input being typed into
+    var oskRow = 1, oskCol = 0;
+    var oskShift = false;
+    var oskOpen = false;
+
+    var TEXT_INPUT = /^(?:text|search|email|url|tel|password|number)$/i;
+
+    function isTextField(el) {
+        if (!el || !el.tagName) return false;
+        if (el.isContentEditable) return true;
+        if (el.tagName === 'TEXTAREA') return !el.disabled && !el.readOnly;
+        if (el.tagName !== 'INPUT') return false;
+        if (el.disabled || el.readOnly) return false;
+        return TEXT_INPUT.test(el.getAttribute('type') || 'text');
+    }
+
+    function activeTextField() {
+        var el = document.activeElement;
+        return isTextField(el) && document.contains(el) ? el : null;
+    }
+
+    // --- writing into the field --------------------------------------------
+    // React installs its own value setter on the element, so assigning .value
+    // updates the DOM without the component ever hearing about it. Going through
+    // the prototype setter and firing `input` is what its onChange keys off.
+    function setFieldValue(el, value, caret) {
+        var proto = el.tagName === 'TEXTAREA' ? window.HTMLTextAreaElement.prototype
+                                              : window.HTMLInputElement.prototype;
+        var desc = Object.getOwnPropertyDescriptor(proto, 'value');
+        if (desc && desc.set) desc.set.call(el, value); else el.value = value;
+        try { el.setSelectionRange(caret, caret); } catch (e) { /* type has no caret */ }
+        el.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
+    }
+
+    function caretOf(el) {
+        try {
+            if (typeof el.selectionStart === 'number') {
+                return { start: el.selectionStart, end: el.selectionEnd };
+            }
+        } catch (e) { /* type exposes no selection */ }
+        var n = (el.value || '').length;
+        return { start: n, end: n };
+    }
+
+    function fieldInsert(el, text) {
+        if (el.isContentEditable) { document.execCommand('insertText', false, text); return; }
+        var v = el.value || '', at = caretOf(el);
+        setFieldValue(el, v.slice(0, at.start) + text + v.slice(at.end), at.start + text.length);
+    }
+
+    function fieldBackspace(el) {
+        if (el.isContentEditable) { document.execCommand('delete', false, null); return; }
+        var v = el.value || '', at = caretOf(el);
+        if (at.end > at.start) setFieldValue(el, v.slice(0, at.start) + v.slice(at.end), at.start);
+        else if (at.start > 0) setFieldValue(el, v.slice(0, at.start - 1) + v.slice(at.start), at.start - 1);
+    }
+
+    function fieldClear(el) {
+        if (el.isContentEditable) {
+            el.textContent = '';
+            el.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
+            return;
+        }
+        setFieldValue(el, '', 0);
+    }
+
+    function fieldMoveCaret(el, delta) {
+        if (el.isContentEditable) return;
+        var at = caretOf(el), n = (el.value || '').length;
+        var to = Math.min(n, Math.max(0, (delta < 0 ? at.start : at.end) + delta));
+        try { el.setSelectionRange(to, to); } catch (e) { /* type has no caret */ }
+    }
+
+    // --- panel -------------------------------------------------------------
+    function oskStyle() {
+        if (!document.head || document.getElementById(OSK_ID + '-style')) return;
+        var p = '#' + OSK_ID;
+        var css = p + '{position:fixed;left:50%;bottom:3rem;transform:translateX(-50%);' +
+            'z-index:2147483646;display:none;flex-direction:column;gap:0.4rem;' +
+            'width:min(64rem,94vw);padding:0.8rem;border-radius:0.8rem;' +
+            'background:rgba(12,10,36,0.97);box-shadow:0 0.6rem 2.4rem rgba(0,0,0,0.6);' +
+            'color:#fff;font-size:1.3rem;line-height:1;user-select:none}' +
+            p + '.show{display:flex}' +
+            p + '.top{bottom:auto;top:3rem}' +
+            p + ' .osk-row{display:flex;gap:0.4rem}' +
+            p + ' .osk-key{flex:1 1 0;min-width:0;height:3.4rem;display:flex;' +
+            'align-items:center;justify-content:center;border-radius:0.4rem;' +
+            'background:rgba(255,255,255,0.09);cursor:pointer;overflow:hidden}' +
+            p + ' .osk-key.on{background:rgba(255,255,255,0.24)}' +
+            p + ' .osk-key.sel{background:var(--primary-accent-color,#7b5bf5);' +
+            'box-shadow:inset 0 0 0 0.2rem rgba(255,255,255,0.9)}' +
+            p + ' .osk-hint{padding-top:0.3rem;text-align:center;font-size:1rem;opacity:0.55}';
+        var style = document.createElement('style');
+        style.id = OSK_ID + '-style';
+        style.textContent = css;
+        document.head.appendChild(style);
+    }
+
+    function oskKey(lower, upper, action, grow) {
+        var el = document.createElement('div');
+        el.className = 'osk-key';
+        el.__lower = lower;
+        el.__upper = upper;
+        el.__action = action || '';
+        el.textContent = lower;
+        if (grow) el.style.flexGrow = String(grow);
+        // A mouse works on it too, and must not pull focus off the field.
+        el.addEventListener('mousedown', function (e) { e.preventDefault(); });
+        el.addEventListener('click', function () { oskPress(el); });
+        return el;
+    }
+
+    function oskBuild() {
+        if (oskRoot && document.contains(oskRoot)) return true;
+        if (!document.body) return false;
+        oskStyle();
+        oskRoot = document.createElement('div');
+        oskRoot.id = OSK_ID;
+        oskRoot.setAttribute('aria-hidden', 'true');
+        oskRows = [];
+        for (var r = 0; r < OSK_ROWS.length; r++) {
+            var row = document.createElement('div');
+            row.className = 'osk-row';
+            var cells = [];
+            var lower = OSK_ROWS[r][0], upper = OSK_ROWS[r][1];
+            for (var c = 0; c < lower.length; c++) {
+                var key = oskKey(lower.charAt(c), upper.charAt(c), '', 0);
+                row.appendChild(key);
+                cells.push(key);
+            }
+            oskRoot.appendChild(row);
+            oskRows.push(cells);
+        }
+        var actions = document.createElement('div');
+        actions.className = 'osk-row';
+        var actionCells = [];
+        for (var i = 0; i < OSK_ACTIONS.length; i++) {
+            var spec = OSK_ACTIONS[i];
+            var el = oskKey(spec.label, spec.label, spec.action, spec.grow);
+            actions.appendChild(el);
+            actionCells.push(el);
+        }
+        oskRoot.appendChild(actions);
+        oskRows.push(actionCells);
+        var hint = document.createElement('div');
+        hint.className = 'osk-hint';
+        hint.textContent = OSK_HINT;
+        oskRoot.appendChild(hint);
+        document.body.appendChild(oskRoot);
+        return true;
+    }
+
+    function oskPaint() {
+        for (var r = 0; r < oskRows.length; r++) {
+            for (var c = 0; c < oskRows[r].length; c++) {
+                var el = oskRows[r][c];
+                if (!el.__action) el.textContent = oskShift ? el.__upper : el.__lower;
+                else if (el.__action === 'shift') el.classList.toggle('on', oskShift);
+                el.classList.toggle('sel', r === oskRow && c === oskCol);
+            }
+        }
+    }
+
+    // Dock to whichever half of the window the field is not in, so the panel
+    // never covers what is being typed.
+    function oskPlace() {
+        if (!oskRoot || !oskField) return;
+        var r = oskField.getBoundingClientRect();
+        oskRoot.classList.toggle('top', r.top + r.height / 2 > window.innerHeight / 2);
+    }
+
+    function oskShow(field) {
+        if (!CFG.virtualKeyboard || !field || !oskBuild()) return false;
+        oskField = field;
+        oskOpen = true;
+        oskShift = false;
+        if (oskRow >= oskRows.length) { oskRow = 1; oskCol = 0; }
+        if (oskCol >= oskRows[oskRow].length) oskCol = 0;
+        oskRoot.classList.add('show');
+        oskPlace();
+        oskPaint();
+        return true;
+    }
+
+    // `keepField` means the user dismissed it deliberately (B, Done), so focus
+    // goes back to the input - the selection carries on from the field rather
+    // than from wherever it was before.
+    function oskHide(keepField) {
+        if (!oskOpen) return;
+        oskOpen = false;
+        oskShift = false;
+        if (oskRoot) oskRoot.classList.remove('show');
+        var field = oskField;
+        oskField = null;
+        if (keepField && field && document.contains(field)) focusEl(field);
+    }
+
+    // Enter is how the search box commits a query, so Done is worth more than a
+    // plain dismiss.
+    function oskSubmit() {
+        var field = oskField;
+        oskHide(true);
+        if (field && document.contains(field) && document.activeElement === field) {
+            sendKey('Enter');
+        }
+    }
+
+    function oskMove(dir) {
+        var row = oskRows[oskRow];
+        if (!row || !row.length) return;
+        if (dir === 'left' || dir === 'right') {
+            oskCol = (oskCol + (dir === 'right' ? 1 : -1) + row.length) % row.length;
+            oskPaint();
+            return;
+        }
+        // Rows differ in length and in key width, so the column is carried across
+        // by screen position rather than by index.
+        var from = row[oskCol].getBoundingClientRect();
+        var cx = from.left + from.width / 2;
+        var next = (oskRow + (dir === 'down' ? 1 : -1) + oskRows.length) % oskRows.length;
+        var best = 0, bestDist = Infinity;
+        for (var i = 0; i < oskRows[next].length; i++) {
+            var r = oskRows[next][i].getBoundingClientRect();
+            var d = Math.abs(r.left + r.width / 2 - cx);
+            if (d < bestDist) { bestDist = d; best = i; }
+        }
+        oskRow = next;
+        oskCol = best;
+        oskPaint();
+    }
+
+    function oskTick() { rumble(20, 0.12, 0); }
+
+    function oskPress(el) {
+        var field = oskField;
+        if (!field || !document.contains(field)) { oskHide(false); return; }
+        if (document.activeElement !== field) focusEl(field);
+        switch (el.__action) {
+        case 'shift': oskShift = !oskShift; oskPaint(); return;
+        case 'done':  oskSubmit(); return;
+        case 'space': fieldInsert(field, ' '); break;
+        case 'back':  fieldBackspace(field); break;
+        case 'clear': fieldClear(field); break;
+        default:
+            fieldInsert(field, oskShift ? el.__upper : el.__lower);
+            // Shift covers the next character only, the way a real one does.
+            if (oskShift) { oskShift = false; oskPaint(); }
+            break;
+        }
+        oskTick();
+    }
+
+    // Nearly every press while the keyboard is up belongs to it; the few that do
+    // not (L3 fullscreen) fall through to the ordinary bindings.
+    function oskButton(name) {
+        var field = oskField;
+        switch (name) {
+        case 'UP':    oskMove('up'); return true;
+        case 'DOWN':  oskMove('down'); return true;
+        case 'LEFT':  oskMove('left'); return true;
+        case 'RIGHT': oskMove('right'); return true;
+        case 'A':     oskPress(oskRows[oskRow][oskCol]); return true;
+        case 'B':     oskHide(true); return true;
+        case 'X':     if (field) { fieldBackspace(field); oskTick(); } return true;
+        case 'Y':     oskShift = !oskShift; oskPaint(); return true;
+        case 'LB':    if (field) fieldMoveCaret(field, -1); return true;
+        case 'RB':    if (field) fieldMoveCaret(field, 1); return true;
+        case 'START': oskSubmit(); return true;
+        case 'BACK':  if (field) fieldClear(field); return true;
+        case 'LT': case 'RT': return true;   // no seek to do behind a text field
+        default:      return false;
+        }
+    }
+
+    // The keyboard only ever comes up on an explicit A press (see act()), never
+    // on focus alone - walking the selection past a text field on the way to
+    // something else must not pop it. Focus moving off the field is still the
+    // cue to put it away.
+    document.addEventListener('focusin', function (e) {
+        if (oskOpen && e.target !== oskField) oskHide(false);
+    }, true);
+
+    document.addEventListener('focusout', function (e) {
+        if (!oskOpen || e.target !== oskField) return;
+        // A re-render can drop focus for a tick and hand it straight back.
+        window.setTimeout(function () {
+            if (oskOpen && document.activeElement !== oskField) oskHide(false);
+        }, 0);
+    }, true);
+)JS",
+R"JS(
     // --- control-bar nav mode ----------------------------------------------
     // The control bar renders every one of its controls as a Button carrying an
     // explicit tabindex="-1" - the web UI drives them with the mouse - so they
@@ -460,8 +786,12 @@ R"JS(
     var CONTROL_BAR = '[class*="control-bar-container"]';
     // "button-container" is the class the Button component itself renders. The
     // bar's own wrappers are "control-bar-buttonS-container" and
-    // "control-bar-buttons-menu-container", so this does not catch them.
+    // "control-bar-buttons-menu-container", so this does not catch them - but
+    // the seek bar's duration label is *also* rendered as a Button (for its
+    // tooltip), so scanning the whole bar picks that up as index 0 ahead of
+    // play/pause. Scope to the buttons row alone to avoid it.
     var CONTROL_ITEM = '[class*="button-container"]';
+    var CONTROL_BUTTONS = '[class*="control-bar-buttons-container"]';
     // Subtitles, audio, speed, cast, options and statistics each render as a
     // "menu-layer"; the episode list is a "side-drawer-layer".
     var MENU_LAYER = '[class*="menu-layer"],[class*="side-drawer-layer"]';
@@ -489,7 +819,8 @@ R"JS(
         var out = [];
         var bar = controlBar();
         if (!bar) return out;
-        var nodes = bar.querySelectorAll(CONTROL_ITEM);
+        var scope = bar.querySelector(CONTROL_BUTTONS) || bar;
+        var nodes = scope.querySelectorAll(CONTROL_ITEM);
         for (var i = 0; i < nodes.length; i++) {
             if (nodes[i].classList.contains('disabled')) continue;
             if (!isLaidOut(nodes[i])) continue;
@@ -619,6 +950,9 @@ R"JS(
     var BUTTONS = ['A', 'B', 'X', 'Y', 'LB', 'RB', 'LT', 'RT', 'BACK', 'START',
                    'L3', 'R3', 'UP', 'DOWN', 'LEFT', 'RIGHT', 'GUIDE'];
     var REPEATABLE = { UP: 1, DOWN: 1, LEFT: 1, RIGHT: 1, LT: 1, RT: 1 };
+    // Only while the on-screen keyboard is up, where these are backspace and the
+    // caret keys - holding them down is the whole point.
+    var OSK_REPEATABLE = { X: 1, LB: 1, RB: 1 };
 
     var held = {};
     var stickHeld = { UP: false, DOWN: false, LEFT: false, RIGHT: false };
@@ -686,6 +1020,9 @@ R"JS(
 
     // --- bindings ----------------------------------------------------------
     function act(name, now) {
+        // The on-screen keyboard takes the pad over while it is up, bar the few
+        // presses it has no use for.
+        if (oskOpen && oskButton(name)) return;
         var player = inPlayer();
         if (player) wakeControls();
 
@@ -722,7 +1059,11 @@ R"JS(
                 } else {
                     sendKey('Space');                  // play / pause
                 }
-            } else if (ensureFocus()) sendKey('Enter');  // activate
+            } else if (!oskShow(activeTextField())) {
+                // On a text field A raises the keyboard instead - that is how it
+                // comes back after B dismissed it without leaving the field.
+                if (ensureFocus()) sendKey('Enter');  // activate
+            }
             break;
         case 'B':
             // Escape is back / close / exit-player on the web UI; elsewhere
@@ -794,7 +1135,8 @@ R"JS(
                 s.down = true;
                 s.next = now + CFG.repeatDelay;
                 act(name, now);
-            } else if (REPEATABLE[name] && now >= s.next) {
+            } else if ((REPEATABLE[name] || (oskOpen && OSK_REPEATABLE[name])) &&
+                       now >= s.next) {
                 s.next = now + CFG.repeatRate;
                 act(name, now);
             }
@@ -827,6 +1169,7 @@ R"JS(
         var root = document.documentElement;
         if (root && root.classList) root.classList.toggle(ACTIVE_CLASS, on);
         if (on) toast('Controller connected');
+        else oskHide(false);        // nothing left to drive it with
         // Lets notify_skip.lua swap its skip-button hint between "Press Tab" and
         // "RB+A" depending on whether a pad is actually driving the player.
         shell('mpv-command', ['script-message-to', 'notify_skip', 'gamepad-active', on ? 'true' : 'false']);
@@ -872,6 +1215,7 @@ R"JS(
         padIndex = -1;
         held = {};
         navMode = false;
+        oskHide(false);
     });
 
     // A route change drops focus, which would leave the d-pad dead until the
@@ -880,6 +1224,7 @@ R"JS(
         playerEl = null;
         scrollCache = { el: null, at: 0 };
         navMode = false;
+        oskHide(false);
         restartRepeats();
         if (!active || inPlayer()) return;
         window.setTimeout(function () { if (active && !inPlayer()) ensureFocus(); }, 350);
@@ -890,7 +1235,7 @@ R"JS(
         config: CFG,
         setEnabled: function (on) {
             CFG.enabled = !!on;
-            if (!CFG.enabled) { held = {}; setActive(false); }
+            if (!CFG.enabled) { held = {}; oskHide(false); setActive(false); }
             return CFG.enabled;
         },
         isEnabled: function () { return !!CFG.enabled; },
@@ -901,7 +1246,8 @@ R"JS(
                 connected: !!pad,
                 id: pad ? pad.id : null,
                 mapping: pad ? pad.mapping : null,
-                player: inPlayer()
+                player: inPlayer(),
+                keyboard: oskOpen
             };
         }
     };
@@ -927,6 +1273,7 @@ std::wstring BuildGamepadScript()
         << ",vibration:"  << (g_gamepadVibration ? "true" : "false")
         << ",focusRing:"  << (g_gamepadFocusRing ? "true" : "false")
         << ",arrowNavigation:" << (g_gamepadArrowNav ? "true" : "false")
+        << ",virtualKeyboard:" << (g_gamepadVirtualKeyboard ? "true" : "false")
         << "};";
 
     std::string js = cfg.str();

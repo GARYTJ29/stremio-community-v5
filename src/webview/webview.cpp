@@ -198,6 +198,127 @@ void WaitAndRefreshIfNeeded()
     }).detach();
 }
 
+// ---------------------------------------------------------------------------
+// mpv console keyboard bridge
+//
+// mpv never gets real OS keyboard focus: WebView2 owns it and the page's own
+// JS decides per-key whether to treat a key as a UI shortcut or relay it to
+// mpv. That's fine for discrete playback keys, but it breaks free-text entry
+// into mpv's built-in console (opened with ` ) - letters like I/S/A/R/D and
+// Escape hit the web UI's own shortcuts instead of reaching the console.
+//
+// This has to be solved on the page side, not natively: WebView2's
+// AcceleratorKeyPressed only fires for accelerators (Ctrl/Alt combos and
+// non-character keys), so plain letters never reach it, and marking an event
+// Handled there still doesn't stop it being dispatched to the DOM.
+//
+// AddScriptToExecuteOnDocumentCreated runs before any of the page's own
+// scripts, so a capture-phase listener registered here on `window` is the
+// first thing to see every key. While the console is open we swallow the
+// event outright (stopImmediatePropagation + preventDefault, so no web UI
+// handler ever runs) and forward the key to mpv as a raw `keypress` command
+// over the existing transport. Outside the console this is a pure no-op.
+// ---------------------------------------------------------------------------
+static const wchar_t* INJECTED_MPV_CONSOLE_SCRIPT = LR"JS(
+(function() {
+    // mpv key names for keys whose event.key isn't the literal character.
+    var SPECIAL = {
+        'Enter': 'ENTER', 'Backspace': 'BS', 'Escape': 'ESC', 'Tab': 'TAB',
+        'Delete': 'DEL', 'Insert': 'INS', 'Home': 'HOME', 'End': 'END',
+        'PageUp': 'PGUP', 'PageDown': 'PGDWN', 'ArrowLeft': 'LEFT',
+        'ArrowRight': 'RIGHT', 'ArrowUp': 'UP', 'ArrowDown': 'DOWN',
+        ' ': 'SPACE'
+    };
+    var MODIFIERS = {
+        'Shift': 1, 'Control': 1, 'Alt': 1, 'Meta': 1, 'CapsLock': 1,
+        'AltGraph': 1, 'NumLock': 1, 'ScrollLock': 1
+    };
+
+    var consoleOpen = false;
+
+    function sendToMpv(keyName) {
+        try {
+            window.chrome.webview.postMessage(JSON.stringify({
+                type: 6,
+                object: "transport",
+                method: "handleInboundJSON",
+                id: 997,
+                args: [ "mpv-command", [ "keypress", keyName ] ]
+            }));
+        } catch (e) { /* transport not up yet - nothing useful to do */ }
+    }
+
+    function mpvKeyName(event) {
+        var key = event.key;
+        if (MODIFIERS[key]) return null;
+
+        var name = SPECIAL[key];
+        if (!name) {
+            // Printable key: event.key is already the resolved character
+            // (shift/layout applied), which is exactly what mpv wants.
+            if (key.length !== 1) return null;
+            name = key;
+        }
+
+        // Shift is already baked into a printable character, so only tag it
+        // on the named keys where it's still meaningful.
+        var prefix = '';
+        if (event.ctrlKey) prefix += 'Ctrl+';
+        if (event.altKey)  prefix += 'Alt+';
+        if (event.shiftKey && SPECIAL[key]) prefix += 'Shift+';
+        return prefix + name;
+    }
+
+    function swallow(event) {
+        event.stopImmediatePropagation();
+        event.stopPropagation();
+        event.preventDefault();
+    }
+
+    // Capture phase on window: runs before every handler the page registers,
+    // wherever it registers them.
+    window.addEventListener('keydown', function(event) {
+        var isBacktick = (event.key === '`' || event.key === '~');
+
+        if (!consoleOpen) {
+            if (!isBacktick) return;   // normal web UI handling
+            // Let the web UI's own relay stay out of it - we forward it
+            // ourselves so opening and typing go down one identical path.
+            swallow(event);
+            consoleOpen = true;
+            sendToMpv('`');
+            return;
+        }
+
+        var name = mpvKeyName(event);
+        if (name === null) {
+            // Bare modifier: still swallow it so the web UI can't act on it,
+            // but there's nothing to forward.
+            swallow(event);
+            return;
+        }
+
+        swallow(event);
+        sendToMpv(name);
+
+        // ESC is what closes mpv's console, so track that here too.
+        if (event.key === 'Escape') consoleOpen = false;
+    }, true);
+
+    // The page also listens for keyup/keypress in places; swallow those too
+    // while the console owns the keyboard so nothing leaks through.
+    ['keyup', 'keypress'].forEach(function(type) {
+        window.addEventListener(type, function(event) {
+            if (consoleOpen) swallow(event);
+        }, true);
+    });
+
+    // Safety hatch: never leave the keyboard captured if the window loses
+    // focus, otherwise a desynced state would look like a frozen app.
+    window.addEventListener('blur', function() { consoleOpen = false; });
+})();
+)JS";
+
 void InitWebView2(HWND hWnd)
 {
     std::cout << "[WEBVIEW]: Starting webview..." << std::endl;
@@ -289,6 +410,7 @@ void InitWebView2(HWND hWnd)
 
                     g_webview->AddScriptToExecuteOnDocumentCreated(EXEC_SHELL_SCRIPT,nullptr);
                     g_webview->AddScriptToExecuteOnDocumentCreated(INJECTED_KEYDOWN_SCRIPT,nullptr);
+                    g_webview->AddScriptToExecuteOnDocumentCreated(INJECTED_MPV_CONSOLE_SCRIPT,nullptr);
                     g_webview->AddScriptToExecuteOnDocumentCreated(BuildGamepadScript().c_str(),nullptr);
 
                     SetupWebMods();

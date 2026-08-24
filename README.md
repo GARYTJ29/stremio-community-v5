@@ -53,7 +53,7 @@
   <li>⚙️ <strong>App Settings</strong>: Customize options like CloseOnExit, PauseOnMinimize, and PauseOnLostFocus and more.</li>
   <li>🔄 <strong>Built-in Autoupdate</strong>: Built-in autoupdater. No need to always download from GitHub.</li>
   <li>📦 <strong>Scoop and Chocolatey</strong>: Support for Scoop and Choco for ease of use.</li>
-  <li>🎮 <strong>Controller Support</strong>: Navigate the menus and drive the player with an Xbox, DualSense/DualShock or Switch Pro pad.</li>
+  <li>🎮 <strong>Controller Support</strong>: Navigate the menus, type on an on-screen keyboard and drive the player with an Xbox, DualSense/DualShock or Switch Pro pad.</li>
 </ul>
 
 
@@ -214,6 +214,7 @@
         - 🎮 ``[Controller] Vibration`` Short rumble when a pad connects
         - 🎮 ``[Controller] FocusRing`` Draw a high-visibility outline around the focused item while a pad is connected
         - 🎮 ``[Controller] ArrowNavigation`` Arrow keys select the neighbouring item and scroll it into view, instead of scrolling the list (applies to the keyboard too)
+        - 🎮 ``[Controller] VirtualKeyboard`` Let **A** raise an on-screen keyboard on a selected text field
         - 🎮 ``[Controller] Deadzone`` Stick deadzone in percent (default `35`)
         - 🎮 ``[Controller] RepeatDelay`` Milliseconds a direction must be held before it starts repeating (default `500`) — raise it if navigation runs away from you
         - 🎮 ``[Controller] RepeatRate`` Milliseconds between repeats while a direction is held (default `300`) — raise it to slow held-direction navigation further
@@ -272,6 +273,32 @@ Controller support can be toggled at any time by `right-clicking` the **tray ico
 | **Back / View** | Back |
 | Right Stick | Scroll the current list |
 | **L3** | Toggle fullscreen |
+
+### ⌨️ **Typing**
+
+Select a text field — the search bar, an addon URL, a login box — and press **A** to
+bring up an on-screen keyboard, docked to whichever half of the window the field is
+not in. The d-pad walks the keys and **A** types the one under the highlight. Moving
+the selection *through* a field on the way somewhere else leaves it alone; it takes
+that deliberate press.
+
+| Input | Action |
+| --- | --- |
+| D-Pad / Left Stick | Move between keys (wraps at the edges) |
+| **A** / Cross | Type the highlighted key |
+| **B** / Circle | Close the keyboard, leaving the text as it is |
+| **X** / Square | Backspace — hold to repeat |
+| **Y** / Triangle | Shift, for the next character only |
+| **LB** / **RB** | Move the cursor left / right |
+| **Start** | Done — commits the field (a search runs) and closes |
+| **Back / View** | Clear the field |
+
+**B** leaves the text as it is and puts the selection back on the field, so **A** brings
+the keyboard straight back. Moving the selection off the field closes it. A mouse works
+on the keys too.
+
+> **⌨️ Note:** Turn it off with ``[Controller] VirtualKeyboard=0`` if you always have a
+> real keyboard to hand.
 
 ### ▶️ **Player**
 

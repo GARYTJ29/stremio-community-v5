@@ -81,6 +81,7 @@ int  g_gamepadRepeatRate  = 300;
 bool g_gamepadVibration   = true;
 bool g_gamepadFocusRing   = true;
 bool g_gamepadArrowNav    = true;
+bool g_gamepadVirtualKeyboard = true;
 
 // Tray sizes
 int g_tray_itemH = 31;

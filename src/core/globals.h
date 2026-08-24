@@ -127,6 +127,7 @@ extern int  g_gamepadRepeatRate;  // ms between repeats
 extern bool g_gamepadVibration;
 extern bool g_gamepadFocusRing;
 extern bool g_gamepadArrowNav;  // arrow keys select instead of scrolling (keyboard too)
+extern bool g_gamepadVirtualKeyboard; // on-screen keyboard when a text field is focused
 
 // Tray sizes
 extern int g_tray_itemH;

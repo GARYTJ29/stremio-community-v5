@@ -88,6 +88,7 @@ void LoadSettings()
     g_gamepadVibration   = (GetPrivateProfileIntW(L"Controller", L"Vibration", 1, iniPath.c_str()) == 1);
     g_gamepadFocusRing   = (GetPrivateProfileIntW(L"Controller", L"FocusRing", 1, iniPath.c_str()) == 1);
     g_gamepadArrowNav    = (GetPrivateProfileIntW(L"Controller", L"ArrowNavigation", 1, iniPath.c_str()) == 1);
+    g_gamepadVirtualKeyboard = (GetPrivateProfileIntW(L"Controller", L"VirtualKeyboard", 1, iniPath.c_str()) == 1);
     g_gamepadDeadzone    = GetPrivateProfileIntW(L"Controller", L"Deadzone", 35, iniPath.c_str());
     g_gamepadRepeatDelay = GetPrivateProfileIntW(L"Controller", L"RepeatDelay", 500, iniPath.c_str());
     g_gamepadRepeatRate  = GetPrivateProfileIntW(L"Controller", L"RepeatRate", 300, iniPath.c_str());
@@ -140,6 +141,7 @@ void SaveSettings()
     WritePrivateProfileStringW(L"Controller", L"Vibration", g_gamepadVibration ? L"1" : L"0", iniPath.c_str());
     WritePrivateProfileStringW(L"Controller", L"FocusRing", g_gamepadFocusRing ? L"1" : L"0", iniPath.c_str());
     WritePrivateProfileStringW(L"Controller", L"ArrowNavigation", g_gamepadArrowNav ? L"1" : L"0", iniPath.c_str());
+    WritePrivateProfileStringW(L"Controller", L"VirtualKeyboard", g_gamepadVirtualKeyboard ? L"1" : L"0", iniPath.c_str());
     WriteIntToIni(L"Controller", L"Deadzone",    g_gamepadDeadzone,    iniPath);
     WriteIntToIni(L"Controller", L"RepeatDelay", g_gamepadRepeatDelay, iniPath);
     WriteIntToIni(L"Controller", L"RepeatRate",  g_gamepadRepeatRate,  iniPath);
