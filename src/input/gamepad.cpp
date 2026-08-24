@@ -165,9 +165,112 @@ R"JS((function () {
         }));
     }
 
+    // --- seek peek ---------------------------------------------------------
+    // Seeking with the pad gives no read-out, while hovering the bar with a
+    // mouse pops up the time (seekbar-hover-time webmod) and the chapter name
+    // (the shell's own chapter script). Both derive everything from the
+    // clientX of a mousemove on the slider, so rather than duplicating either,
+    // fake a hover over the thumb and let them draw what they already would.
+    var seekPeekTimer = null;
+
+    function seekSlider() {
+        var sels = ['.seek-bar-I7WeY .slider-hBDOf',
+                    '[class*="seek-bar"] [class*="slider-container"]',
+                    '[class*="seek-bar"] [class*="slider"]'];
+        for (var i = 0; i < sels.length; i++) {
+            var el = document.querySelector(sels[i]);
+            if (el && el.offsetParent !== null) return el;
+        }
+        return null;
+    }
+
+    // Where the playhead currently sits, in viewport coordinates.
+    function thumbX(slider, rect) {
+        var thumb = slider.querySelector('[class*="thumb-"]');
+        if (thumb) {
+            var tr = thumb.getBoundingClientRect();
+            if (tr.width) return tr.left + tr.width / 2;
+        }
+        // No thumb (some themes hide it) - the filled part of the track ends
+        // at the same place.
+        var before = slider.querySelector('[class*="track-before"]');
+        if (before) {
+            var br = before.getBoundingClientRect();
+            if (br.width >= 0) return rect.left + br.width;
+        }
+        return rect.left;
+    }
+
+    // The UI's own Slider.onMouseMove posts "seek-hover", which the shell turns
+    // into a thumbfast thumbnail - unwanted here, we only asked for the text.
+    // React delegates its listeners at the app root, so a bubble-phase blocker
+    // on the slider's parent stops the peek short of React while the tooltip
+    // listeners, which sit directly on the slider, have already run.
+    function blockPeek(e) {
+        if (e.__stremioPeek) e.stopPropagation();
+    }
+
+    function armPeekBlocker(slider) {
+        var parent = slider.parentNode;
+        if (!parent || parent.__stremioPeekBlocked) return;
+        parent.__stremioPeekBlocked = true;
+        parent.addEventListener('mouseover', blockPeek);
+        parent.addEventListener('mousemove', blockPeek);
+    }
+
+    function peekEvent(type, init) {
+        var e = new MouseEvent(type, init);
+        e.__stremioPeek = true;
+        return e;
+    }
+
+    function peekSeekOnce() {
+        var slider = seekSlider();
+        if (!slider) return;
+        var r = slider.getBoundingClientRect();
+        if (!r.width) return;
+        armPeekBlocker(slider);
+        var init = {
+            bubbles: true, cancelable: true, composed: true, view: window,
+            clientX: Math.round(thumbX(slider, r)),
+            clientY: Math.round(r.top + r.height / 2)
+        };
+        slider.dispatchEvent(peekEvent('mouseover', init));
+        slider.dispatchEvent(peekEvent('mousemove', init));
+    }
+
+    function peekSeek() {
+        // Once now so it tracks a held direction, and again once the seek has
+        // landed and the thumb has actually moved.
+        peekSeekOnce();
+        window.setTimeout(peekSeekOnce, 180);
+
+        if (seekPeekTimer) window.clearTimeout(seekPeekTimer);
+        seekPeekTimer = window.setTimeout(function () {
+            seekPeekTimer = null;
+            var slider = seekSlider();
+            // mouseleave does not bubble, but both listeners sit on the slider.
+            if (slider) slider.dispatchEvent(new MouseEvent('mouseleave', {
+                bubbles: false, cancelable: true, composed: true, view: window,
+                relatedTarget: document.documentElement
+            }));
+        }, 1800);
+    }
+
     // --- focus -------------------------------------------------------------
     var FOCUSABLE = '[tabindex]:not([tabindex="-1"]),a[href],button:not([disabled]),' +
         'input:not([disabled]),select:not([disabled]),textarea:not([disabled])';
+
+    // Some of the web UI's Buttons carry an explicit tabindex="-1" because it
+    // drives them with the mouse, which hides them from FOCUSABLE and from the
+    // spatial-navigation polyfill alike. Most are better left out of reach -
+    // every poster card renders its "..." menu that way, and stepping through
+    // one per card would make a shelf unusable - but the back buttons are not
+    // optional: the horizontal nav bar's, and the one the streams list puts
+    // beside the source select, are a page's only way back short of B. So
+    // directional moves search for those two as well.
+    var BACK_BUTTON = '[class*="back-button-container"]';
+    var NAVIGABLE = FOCUSABLE + ',' + BACK_BUTTON;
 
     function isVisible(el) {
         var r = el.getBoundingClientRect();
@@ -276,7 +379,10 @@ R"JS(
     }
 
     function pickCandidate(from, fromRect, dir, root, relaxed) {
-        var nodes = root.querySelectorAll(FOCUSABLE);
+        // The player renders a back button of its own, and the only ring in
+        // there belongs to an open menu - one stray arrow onto that button and
+        // the next A leaves playback - so it stays out of the search.
+        var nodes = root.querySelectorAll(inPlayer() ? FOCUSABLE : NAVIGABLE);
         var best = null, bestScore = -1;
         for (var i = 0; i < nodes.length; i++) {
             var el = nodes[i];
@@ -909,8 +1015,10 @@ R"JS(
     // is open - either way there is then a ring on screen to move instead. (The
     // UI disables its own seek and volume shortcuts while a menu is open anyway.)
     function playerArrow(dir) {
-        if (navMode || playerMenu()) navMove(dir);
-        else sendKey(ARROWS[dir]);
+        if (navMode || playerMenu()) { navMove(dir); return; }
+        sendKey(ARROWS[dir]);
+        // Left/right are the seek bindings - show what we just seeked to.
+        if (dir === 'left' || dir === 'right') peekSeek();
     }
 
     // The player's Escape shortcut closes its menus *and* navigates back in the

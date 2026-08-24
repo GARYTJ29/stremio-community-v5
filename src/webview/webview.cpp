@@ -161,6 +161,341 @@ img.addEventListener('error', function() {
 })();
 )JS";
 
+const wchar_t* INJECTED_CHAPTERS_SCRIPT_PART1 = LR"JS(
+(function() {
+    // Idempotency check 
+    if (window.stremioChaptersInjected) {
+         console.log("[ChapterJS] Already injected, requesting chapters again.");
+         try {
+            window.chrome.webview.postMessage(JSON.stringify({
+                type: 6,
+                object: "transport",
+                method: "handleInboundJSON",
+                id: 1111,
+                args: ["request-chapters", []]
+            }));
+         } catch(e){}
+         return;
+    }
+    window.stremioChaptersInjected = true;
+
+    let chapters = [];
+    let currentChapterIdx = -1;
+    let duration = 0;
+
+    // Elements
+    let tooltipEl = null;        // Hover tooltip naming the chapter under the cursor
+    let markersContainer = null; // Container for the marker lines
+    let hoverSlider = null;      // Slider the hover listeners are bound to
+    let lastGeom = '';           // Slider geometry at last marker render
+    let pendingTip = null;       // Tooltip placement deferred to the next frame
+    let tipFrame = 0;
+
+    const TOOLTIP_GAP_PX = 6;    // Gap above the slider / seek-time tooltip
+    const VIEWPORT_PAD_PX = 5;
+
+    function log(msg) {
+        console.log("[ChapterJS]: " + msg);
+        try {
+            window.chrome.webview.postMessage(JSON.stringify({ type: "log", msg: "[ChapterJS] " + msg }));
+        } catch(e){}
+    }
+
+    log("Script initializing...");
+
+    // The slider is the element whose width maps 0-100% of the runtime. Its
+    // wrapping seek-bar also holds the two time labels, so anchoring to that
+    // would shift every marker sideways.
+    function getSlider() {
+        const selectors = [
+            '.seek-bar-I7WeY .slider-hBDOf',
+            '.seek-bar-container-JGGTa .slider-hBDOf',
+            '[class*="seek-bar"] [class*="slider-container"]',
+            '[class*="seek-bar"] [class*="slider"]'
+        ];
+        for (const s of selectors) {
+            const candidates = document.querySelectorAll(s);
+            for (const el of candidates) {
+                // Exclude dashboard items (posters/cards) that reuse these names
+                if (el.closest('[class*="poster-container"]') ||
+                    el.closest('[class*="meta-item"]') ||
+                    el.closest('.poster-shape-poster')) {
+                    continue;
+                }
+                if (el.offsetParent !== null) return el;
+            }
+        }
+        return null;
+    }
+
+    // The slider box is taller than the bar you actually see - it reserves room
+    // for the thumb. Markers are sized off the visible track instead so they sit
+    // flush with it rather than sticking out above and below.
+    function getTrackRect(slider) {
+        const track = slider.querySelector('[class*="track-"]');
+        if (track) {
+            const r = track.getBoundingClientRect();
+            if (r.height > 0) return r;
+        }
+        return null;
+    }
+
+    function chapterTitleAt(seconds) {
+        if (!Array.isArray(chapters) || chapters.length === 0) return null;
+        let title = null;
+        for (let i = 0; i < chapters.length; i++) {
+            const t = chapters[i].time;
+            if (typeof t !== 'number') continue;
+            if (t <= seconds + 0.001) {
+                title = chapters[i].title || ('Chapter ' + (i + 1));
+            } else {
+                break;
+            }
+        }
+        return title;
+    }
+)JS";
+
+const wchar_t* INJECTED_CHAPTERS_SCRIPT_PART2 = LR"JS(
+    function ensureTooltip() {
+        if (tooltipEl && document.body.contains(tooltipEl)) return tooltipEl;
+        tooltipEl = document.getElementById('stremio-chapter-tooltip');
+        if (!tooltipEl) {
+            tooltipEl = document.createElement('div');
+            tooltipEl.id = 'stremio-chapter-tooltip';
+            tooltipEl.style.position = 'fixed';
+            tooltipEl.style.display = 'none';
+            tooltipEl.style.padding = '6px 12px';
+            tooltipEl.style.borderRadius = '999px';
+            tooltipEl.style.whiteSpace = 'nowrap';
+            tooltipEl.style.pointerEvents = 'none';
+            tooltipEl.style.zIndex = '2147483647';
+            tooltipEl.style.fontSize = '1rem';
+            tooltipEl.style.fontWeight = '600';
+            tooltipEl.style.fontFamily = 'inherit';
+            tooltipEl.style.color = 'var(--primary-foreground-color, #fff)';
+            tooltipEl.style.background = 'var(--background, rgba(0,0,0,0.85))';
+            tooltipEl.style.border = '1px solid var(--accent, rgba(255,255,255,0.25))';
+            tooltipEl.style.textShadow = '0 1px 2px rgba(0,0,0,0.3)';
+        }
+        document.body.appendChild(tooltipEl);
+        return tooltipEl;
+    }
+
+    function hideTooltip() {
+        pendingTip = null;
+        if (tooltipEl) tooltipEl.style.display = 'none';
+    }
+
+    function placeTooltip() {
+        tipFrame = 0;
+        if (!pendingTip || !tooltipEl) return;
+        const tip = tooltipEl;
+        const mouseX = pendingTip.x;
+
+        // seekbar-hover-time.js parks its time tooltip just above the bar. When
+        // that webmod is installed, sit above it instead of on top of it.
+        let baseTop = pendingTip.top;
+        const timeTip = document.getElementById('timeline-tooltip');
+        if (timeTip && timeTip.offsetHeight > 0 &&
+            window.getComputedStyle(timeTip).display !== 'none') {
+            const r = timeTip.getBoundingClientRect();
+            if (r.height > 0) baseTop = Math.min(baseTop, r.top);
+        }
+
+        tip.style.top = (baseTop - TOOLTIP_GAP_PX - tip.offsetHeight) + 'px';
+
+        const w = tip.offsetWidth;
+        let left = mouseX - w / 2;
+        left = Math.max(VIEWPORT_PAD_PX,
+                        Math.min(left, window.innerWidth - w - VIEWPORT_PAD_PX));
+        tip.style.left = left + 'px';
+    }
+
+    function showTooltip(text, mouseX, sliderRect) {
+        const tip = ensureTooltip();
+        tip.textContent = text;
+        tip.style.display = 'block';
+
+        // Webmods are injected after this script, so seekbar-hover-time's
+        // mousemove listener runs after ours and its tooltip is not laid out
+        // yet on the event we are handling. Position on the next frame, once
+        // it has been, or the first hover of a session would land on top of it.
+        pendingTip = { x: mouseX, top: sliderRect.top };
+        if (!tipFrame) tipFrame = window.requestAnimationFrame(placeTooltip);
+    }
+
+    function onSliderMove(e) {
+        const rect = e.currentTarget.getBoundingClientRect();
+        if (!rect.width || duration <= 0) { hideTooltip(); return; }
+        const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+        const title = chapterTitleAt(pct * duration);
+        if (!title) { hideTooltip(); return; }
+        showTooltip(title, e.clientX, rect);
+    }
+
+    function bindHover(slider) {
+        if (hoverSlider === slider) return;
+        if (hoverSlider) {
+            hoverSlider.removeEventListener('mousemove', onSliderMove);
+            hoverSlider.removeEventListener('mouseleave', hideTooltip);
+        }
+        hoverSlider = slider;
+        slider.addEventListener('mousemove', onSliderMove);
+        slider.addEventListener('mouseleave', hideTooltip);
+    }
+
+)JS";
+
+// Split purely to stay under MSVC's ~16KB string literal limit.
+const wchar_t* INJECTED_CHAPTERS_SCRIPT_PART3 = LR"JS(
+    function ensureUI() {
+        const slider = getSlider();
+        if (!slider) { hideTooltip(); return; }
+
+        bindHover(slider);
+
+        if (!markersContainer) {
+            markersContainer = document.getElementById('stremio-chapter-markers');
+        }
+        if (!markersContainer) {
+            markersContainer = document.createElement('div');
+            markersContainer.id = 'stremio-chapter-markers';
+            markersContainer.style.position = 'absolute';
+            markersContainer.style.top = '0';
+            markersContainer.style.left = '0';
+            markersContainer.style.width = '100%';
+            markersContainer.style.height = '100%';
+            markersContainer.style.pointerEvents = 'none';
+            markersContainer.style.zIndex = '10'; // Above the track, below the thumb
+        }
+
+        // Re-parent if the player re-rendered the slider under us
+        if (markersContainer.parentElement !== slider) {
+            if (window.getComputedStyle(slider).position === 'static') {
+                slider.style.position = 'relative';
+            }
+            slider.appendChild(markersContainer);
+            lastGeom = '';
+        }
+    }
+
+    function renderMarkers() {
+        if (!markersContainer) return;
+        markersContainer.textContent = ''; // Clear old markers
+        lastGeom = '';
+
+        if (!chapters || chapters.length === 0 || duration <= 0) return;
+
+        const slider = markersContainer.parentElement;
+        if (!slider) return;
+
+        const sRect = slider.getBoundingClientRect();
+        if (!sRect.height || !sRect.width) return;
+
+        // Match the visible track's height and vertical position exactly, so the
+        // markers read as ticks on the bar rather than lines crossing it.
+        const tRect = getTrackRect(slider);
+        const top = tRect ? (tRect.top - sRect.top) : 0;
+        const height = tRect ? tRect.height : sRect.height;
+
+        chapters.forEach((ch, idx) => {
+            if (typeof ch.time !== 'number') return;
+            const pct = (ch.time / duration) * 100;
+            // A marker at 0% just paints over the bar's own left edge
+            if (pct <= 0 || pct > 100) return;
+
+            const marker = document.createElement('div');
+            marker.style.position = 'absolute';
+            marker.style.left = pct + '%';
+            marker.style.top = top + 'px';
+            marker.style.height = height + 'px';
+            marker.style.width = '2px';
+            marker.style.marginLeft = '-1px'; // Centre the line on the timestamp
+            marker.style.backgroundColor = 'rgba(255, 255, 255, 0.55)';
+            marker.style.pointerEvents = 'none';
+            markersContainer.appendChild(marker);
+        });
+
+        lastGeom = sRect.width + 'x' + sRect.height + ':' + height;
+    }
+
+    function updateUI() {
+        ensureUI();
+
+        if (!markersContainer || !chapters || chapters.length === 0) return;
+
+        // Re-render when the container was cleared by a re-render, or when the
+        // player was resized and the percentage offsets no longer line up.
+        const slider = markersContainer.parentElement;
+        if (!slider) return;
+        const sRect = slider.getBoundingClientRect();
+        const tRect = getTrackRect(slider);
+        const geom = sRect.width + 'x' + sRect.height + ':' +
+                     (tRect ? tRect.height : sRect.height);
+
+        if (markersContainer.childElementCount === 0 || geom !== lastGeom) {
+            renderMarkers();
+        }
+    }
+
+    setInterval(() => {
+        updateUI();
+    }, 2000);
+
+    window.addEventListener('resize', () => {
+        hideTooltip();
+        updateUI();
+    });
+
+    window.chrome.webview.addEventListener('message', function(event) {
+        try {
+            const data = JSON.parse(event.data);
+            if (data && data.args && Array.isArray(data.args)) {
+                const eventName = data.args[0];
+                const eventData = data.args[1];
+
+                if (eventName === 'mpv-prop-change') {
+                    if (eventData.name === 'chapter-list') {
+                        chapters = eventData.data;
+                        log("Received chapter-list");
+                        renderMarkers();
+                        updateUI();
+                    } else if (eventData.name === 'chapter') {
+                        const newIdx = typeof eventData.data === 'number' ? eventData.data : -1;
+                        currentChapterIdx = newIdx;
+                        updateUI();
+                    } else if (eventData.name === 'duration') {
+                        const d = eventData.data;
+                        if(typeof d === 'number' && d > 0) {
+                            duration = d;
+                            // Re-render markers if duration changed
+                            renderMarkers();
+                        }
+                    }
+                }
+            }
+        } catch(e) {}
+    });
+
+    log("Requesting cached chapters...");
+    window.chrome.webview.postMessage(JSON.stringify({
+        type: 6,
+        object: "transport",
+        method: "handleInboundJSON",
+        id: 1111,
+        args: ["request-chapters", []]
+    }));
+
+})();
+)JS";
+
+std::wstring GetInjectedChaptersScript() {
+    return std::wstring(INJECTED_CHAPTERS_SCRIPT_PART1)
+         + std::wstring(INJECTED_CHAPTERS_SCRIPT_PART2)
+         + std::wstring(INJECTED_CHAPTERS_SCRIPT_PART3);
+}
+
 void WaitAndRefreshIfNeeded()
 {
     std::thread([](){
@@ -412,6 +747,7 @@ void InitWebView2(HWND hWnd)
                     g_webview->AddScriptToExecuteOnDocumentCreated(INJECTED_KEYDOWN_SCRIPT,nullptr);
                     g_webview->AddScriptToExecuteOnDocumentCreated(INJECTED_MPV_CONSOLE_SCRIPT,nullptr);
                     g_webview->AddScriptToExecuteOnDocumentCreated(BuildGamepadScript().c_str(),nullptr);
+                    g_webview->AddScriptToExecuteOnDocumentCreated(GetInjectedChaptersScript().c_str(), nullptr);
 
                     SetupWebMods();
 
@@ -467,6 +803,7 @@ static void SetupWebMessageHandler()
             if(isSuccess) {
                 std::cout<<"[WEBVIEW]: Navigation Complete - Success\n";
                 sender->ExecuteScript(EXEC_SHELL_SCRIPT, nullptr);
+                sender->ExecuteScript(GetInjectedChaptersScript().c_str(), nullptr);
                 // Flush the script queue.
                 if (!g_scriptQueue.empty()) {
                     for (const auto &script : g_scriptQueue) {
@@ -492,6 +829,7 @@ static void SetupWebMessageHandler()
             [](ICoreWebView2* sender, ICoreWebView2ContentLoadingEventArgs* args) -> HRESULT {
                 std::cout<<"[WEBVIEW]: Content loaded\n";
                 sender->ExecuteScript(EXEC_SHELL_SCRIPT, nullptr);
+                sender->ExecuteScript(GetInjectedChaptersScript().c_str(), nullptr);
                 return S_OK;
             }
         ).Get(),
@@ -504,6 +842,7 @@ static void SetupWebMessageHandler()
         [](ICoreWebView2* sender, ICoreWebView2DOMContentLoadedEventArgs* args)->HRESULT
         {
             sender->ExecuteScript(EXEC_SHELL_SCRIPT, nullptr);
+            sender->ExecuteScript(GetInjectedChaptersScript().c_str(), nullptr);
             return S_OK;
         }).Get(),
         &domToken
