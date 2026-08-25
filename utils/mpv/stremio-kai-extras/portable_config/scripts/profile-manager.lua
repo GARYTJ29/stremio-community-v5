@@ -419,6 +419,34 @@ end
 -- DYNAMIC LAYER HELPER FUNCTIONS
 -- ═══════════════════════════════════════════════════════════════════════════
 
+-- Filters declared in mpv.conf, snapshotted before any file loads. Every filter
+-- this script and its siblings add carries a label, so the unlabelled ones are
+-- the user's. They get re-appended after the per-file reset below, at the tail of
+-- the chain so SVP still sees plain SDR frames.
+local conf_vf = {}
+for _, f in ipairs(mp.get_property_native("vf") or {}) do
+    if not f.label then conf_vf[#conf_vf + 1] = f end
+end
+
+local function append_conf_vf()
+    if #conf_vf == 0 then return end
+    local chain = mp.get_property_native("vf") or {}
+    for _, f in ipairs(conf_vf) do chain[#chain + 1] = f end
+    mp.set_property_native("vf", chain)
+    log("Re-appended " .. #conf_vf .. " filter(s) from mpv.conf")
+end
+
+-- d3d11vpp does not retag its own output, so RTX Video HDR frames reach the VO
+-- still labelled SDR. mpv.conf pairs the filter with a `format` retag; the
+-- display side has to be switched to HDR here or gpu-next tone-maps it back out.
+local function conf_vf_outputs_hdr()
+    for _, f in ipairs(conf_vf) do
+        local hdr = f.name == "d3d11vpp" and f.params and f.params["nvidia-true-hdr"]
+        if hdr and hdr ~= "no" then return true end
+    end
+    return false
+end
+
 -- Apply SDR baseline settings (safe defaults for SDR content or as a reset)
 -- Called at the START of every profile application to ensure clean slate
 local function apply_sdr_baseline()
@@ -891,6 +919,10 @@ function try_execute_profile()
         else
             apply_tonemapping()
         end
+    elseif conf_vf_outputs_hdr() then
+        log("RTX Video HDR filter present: switching output to HDR")
+        apply_hdr_passthrough(target_peak)
+        is_passthrough_active = true
     end
     
     if is_passthrough_active then
@@ -909,6 +941,8 @@ function try_execute_profile()
         log("Appending VF: Global SVP (Cinema)")
         mp.commandv("vf", "append", VF_FILTERS.svp_cinema)
     end
+
+    append_conf_vf()
 
     audio_state.mode = meta.audio_preset or "off"
     apply_audio_current()

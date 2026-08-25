@@ -16,6 +16,9 @@ void HandleMpvCommand(const std::vector<std::string>& args);
 void HandleMpvSetProp(const std::vector<std::string>& args);
 void HandleMpvObserveProp(const std::vector<std::string>& args);
 
+// Types the Windows clipboard into mpv one key at a time (mpv's console)
+void HandleMpvPasteClipboard();
+
 // For pausing
 void pauseMPV(bool allowed);
 

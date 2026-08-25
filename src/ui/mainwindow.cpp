@@ -284,6 +284,11 @@ void HandleEvent(const std::string &ev, std::vector<std::string> &args)
         SendSyntheticFullscreenKey();
     } else if (ev == "request-chapters") {
         ResendChapterData();
+    } else if (ev == "mpv-console-paste") {
+        // Ctrl+V while mpv's console is open. The clipboard is read here
+        // rather than in the page so no WebView2 clipboard permission is
+        // involved; the console bridge in webview.cpp only asks.
+        HandleMpvPasteClipboard();
     } else {
         std::cout<<"Unknown event="<<ev<<"\n";
     }

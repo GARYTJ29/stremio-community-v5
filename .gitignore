@@ -6,6 +6,9 @@ cmake-build-*/
 /build/*
 !/build/*.js
 
+# Extracted from anime4k-High-end.zip at build time (see build/build_anime4k.js), not vendored
+/utils/mpv/anime4k/portable_config/shaders/
+
 # Packaged distribution output
 /dist/
 /utils/Stremio*.exe

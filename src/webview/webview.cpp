@@ -553,6 +553,11 @@ void WaitAndRefreshIfNeeded()
 // event outright (stopImmediatePropagation + preventDefault, so no web UI
 // handler ever runs) and forward the key to mpv as a raw `keypress` command
 // over the existing transport. Outside the console this is a pure no-op.
+//
+// Ctrl+V is the one key not forwarded as itself: mpv's own paste binding is
+// unreachable from here (wrong key name once Caps Lock or Shift is in play,
+// and an embedded vo that never owns the clipboard), so the shell reads the
+// clipboard and types it in - see HandleMpvPasteClipboard in player.cpp.
 // ---------------------------------------------------------------------------
 static const wchar_t* INJECTED_MPV_CONSOLE_SCRIPT = LR"JS(
 (function() {
@@ -571,16 +576,30 @@ static const wchar_t* INJECTED_MPV_CONSOLE_SCRIPT = LR"JS(
 
     var consoleOpen = false;
 
-    function sendToMpv(keyName) {
+    function post(event, args) {
         try {
             window.chrome.webview.postMessage(JSON.stringify({
                 type: 6,
                 object: "transport",
                 method: "handleInboundJSON",
                 id: 997,
-                args: [ "mpv-command", [ "keypress", keyName ] ]
+                args: [ event, args ]
             }));
         } catch (e) { /* transport not up yet - nothing useful to do */ }
+    }
+
+    function sendToMpv(keyName) {
+        post("mpv-command", [ "keypress", keyName ]);
+    }
+
+    // Ctrl+V (any case combination) and the console's own Shift+Ins. mpv binds
+    // both itself, but only under the exact name ctrl+v - see mpvKeyName - and
+    // its Windows clipboard backend is not reachable from an embedded, never
+    // focused vo. The shell reads the clipboard instead and types it in.
+    function isPasteKey(event) {
+        if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'v')
+            return true;
+        return event.shiftKey && event.key === 'Insert';
     }
 
     function mpvKeyName(event) {
@@ -593,6 +612,11 @@ static const wchar_t* INJECTED_MPV_CONSOLE_SCRIPT = LR"JS(
             // (shift/layout applied), which is exactly what mpv wants.
             if (key.length !== 1) return null;
             name = key;
+            // ...except with Ctrl/Alt held, where mpv names the binding after
+            // the unshifted character (ctrl+u, ctrl+w). Caps Lock alone would
+            // otherwise turn those into Ctrl+U, which the console never binds.
+            if (event.ctrlKey || event.altKey)
+                name = event.shiftKey ? name.toUpperCase() : name.toLowerCase();
         }
 
         // Shift is already baked into a printable character, so only tag it
@@ -625,6 +649,12 @@ static const wchar_t* INJECTED_MPV_CONSOLE_SCRIPT = LR"JS(
             return;
         }
 
+        if (isPasteKey(event)) {
+            swallow(event);
+            post("mpv-console-paste", []);
+            return;
+        }
+
         var name = mpvKeyName(event);
         if (name === null) {
             // Bare modifier: still swallow it so the web UI can't act on it,
@@ -636,8 +666,9 @@ static const wchar_t* INJECTED_MPV_CONSOLE_SCRIPT = LR"JS(
         swallow(event);
         sendToMpv(name);
 
-        // ESC is what closes mpv's console, so track that here too.
-        if (event.key === 'Escape') consoleOpen = false;
+        // ESC and Ctrl+[ are what close mpv's console, so track that here too.
+        if (event.key === 'Escape' || (event.ctrlKey && event.key === '['))
+            consoleOpen = false;
     }, true);
 
     // The page also listens for keyup/keypress in places; swallow those too
