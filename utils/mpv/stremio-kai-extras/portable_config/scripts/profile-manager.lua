@@ -184,12 +184,24 @@ local function read_svp_conf(key)
     return value
 end
 
-if (read_svp_conf("DEBUG_LOG") or ""):lower() == "true" then
+local debug_log_enabled = (read_svp_conf("DEBUG_LOG") or ""):lower() == "true"
+
+if debug_log_enabled then
     -- stremio.exe has no console, so mp.msg output goes nowhere unless log-file
     -- is set here. mpv buffers early messages and flushes them once it opens.
     local path = mp.command_native({"expand-path", "~~/mpv-debug.log"})
     mp.set_property("log-file", path)
     log("DEBUG_LOG enabled -- writing mpv log to " .. tostring(path))
+end
+
+-- Where to send someone when SVP misbehaves. With DEBUG_LOG off there is no log
+-- to read, so ask for it to be switched on rather than naming a file that was
+-- never written.
+local function debug_hint()
+    if debug_log_enabled then
+        return "see mpv-debug.log"
+    end
+    return "set DEBUG_LOG=true in script-opts/svp.conf"
 end
 
 -- Latch State
@@ -252,10 +264,58 @@ local function vapoursynth_available()
     return false
 end
 
+-- ═══════════════════════════════════════════════════════════════════════════
+-- LIVE SVP STATE (drives the in-player toggle)
+-- ═══════════════════════════════════════════════════════════════════════════
+
+-- What the file currently playing can do with SVP. `filter` is picked per file
+-- (anime vs cinema .vpy) even when SVP starts off, so the on-screen button can
+-- switch it on for content the profile would not have enabled by itself.
+local svp_runtime = {
+    filter      = nil,    -- VF string the toggle appends
+    script      = nil,    -- .vpy that filter loads, for logging
+    active      = false,
+    wanted      = false,  -- what the profile or the last toggle asked for
+    available   = false,  -- VapourSynth resolvable this session
+    base_policy = false,  -- sync policy the file loaded with, restored on toggle-off
+}
+
+-- Presence in the chain -- not the `enabled` flag -- is what "SVP is on" means
+-- here: reactive_vf_bypass disables the filter for a second around every seek,
+-- while only an explicit toggle-off removes it.
+local function svp_in_chain()
+    for _, f in ipairs(mp.get_property_native("vf") or {}) do
+        if f.name == "vapoursynth" or f.label == "SVP" then return true end
+    end
+    return false
+end
+
+-- Mirror the state into a user-data property. The shell forwards property changes
+-- to the WebView, which is how the on-screen button knows what to draw.
+-- Values: "on" | "off" | "unavailable".
+local function publish_svp_state()
+    local value = "unavailable"
+    if svp_runtime.available and svp_runtime.filter then
+        value = svp_runtime.active and "on" or "off"
+    end
+    mp.set_property_native("user-data/kai/svp", value)
+end
+
 -- `vf append` succeeds as soon as the filter joins the chain, but the .vpy only
 -- evaluates at the next reconfig and a script error drops it silently. Read the
 -- chain back once frames are flowing to report what actually survived.
 local function verify_svp_chain(expected_script)
+    -- Report what the chain actually holds before the diagnostics below run.
+    local present = svp_in_chain()
+    svp_runtime.active = present
+    publish_svp_state()
+
+    -- A deferred check can land after SVP was switched off from the button, and
+    -- an empty chain is then exactly what was asked for -- not a failure.
+    if not present and not svp_runtime.wanted then
+        log("[SVP] verify skipped -- SVP switched off before the check ran")
+        return
+    end
     for _, f in ipairs(mp.get_property_native("vf") or {}) do
         if f.name == "vapoursynth" then
             local script = (f.params and f.params.file) or "?"
@@ -265,7 +325,7 @@ local function verify_svp_chain(expected_script)
                 log("[SVP] FAILED -- filter present but disabled by mpv; the .vpy " ..
                     "raised during evaluation. Search this log for " ..
                     "'Script evaluation failed' for the Python traceback.")
-                mp.osd_message("SVP FAILED - script error (see mpv-debug.log)", 5)
+                mp.osd_message("SVP FAILED - script error (" .. debug_hint() .. ")", 5)
                 return
             end
             log("[SVP] ACTIVE -- vapoursynth filter live, script=" .. script)
@@ -276,7 +336,7 @@ local function verify_svp_chain(expected_script)
     log("[SVP] INACTIVE -- expected " .. tostring(expected_script) ..
         ", but no vapoursynth filter is in the chain. The script failed to " ..
         "evaluate; search this log for 'vapoursynth' or 'vf' for the reason.")
-    mp.osd_message("SVP NOT ACTIVE - filter dropped (see mpv-debug.log)", 5)
+    mp.osd_message("SVP NOT ACTIVE - filter dropped (" .. debug_hint() .. ")", 5)
 end
 
 
@@ -403,6 +463,63 @@ local function apply_svp_sync_policy(active)
         log("SVP Engine Inactive: restored default mpv playback baseline")
     end
 end
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- LIVE SVP TOGGLE
+-- ═══════════════════════════════════════════════════════════════════════════
+
+-- Flip SVP for the file currently playing. Deliberately does not touch the
+-- Stremio-side setting: this is a per-playback switch, and the next file starts
+-- from whatever Settings says all over again.
+local function set_svp_active(want_on)
+    if not svp_runtime.available or not svp_runtime.filter then
+        mp.osd_message("SVP unavailable (VapourSynth not installed)", 3)
+        publish_svp_state()
+        return
+    end
+
+    if want_on then
+        if not svp_in_chain() then
+            mp.commandv("vf", "append", svp_runtime.filter)
+        end
+        apply_svp_sync_policy(true)
+        svp_runtime.wanted = true
+        svp_runtime.active = true
+        publish_svp_state()
+        mp.osd_message("SVP: On", 2)
+        log("[SVP] toggled ON (" .. tostring(svp_runtime.script) .. ")")
+        -- The .vpy only evaluates at the next reconfig, so the verdict -- and any
+        -- correction to the state published above -- has to wait for it.
+        mp.add_timeout(4.0, function()
+            verify_svp_chain(svp_runtime.script)
+        end)
+    else
+        mp.commandv("vf", "remove", "@SVP")
+        -- Back to the policy the file loaded with rather than a blanket "off":
+        -- anime keeps the real-time sync settings whether or not SVP is running.
+        apply_svp_sync_policy(svp_runtime.base_policy)
+        svp_runtime.wanted = false
+        svp_runtime.active = false
+        publish_svp_state()
+        mp.osd_message("SVP: Off", 2)
+        log("[SVP] toggled OFF")
+    end
+end
+
+-- Sent by the on-screen button in webmods/UI/svp-toggle.js. `set-svp` exists so a
+-- caller that already knows the state it wants cannot drift out of sync with a
+-- blind flip.
+mp.register_script_message("toggle-svp", function()
+    set_svp_active(not svp_runtime.active)
+end)
+mp.register_script_message("set-svp", function(value)
+    set_svp_active(value == "on" or value == "yes" or value == "true")
+end)
+
+-- Bindable from input.conf as: script-binding profile_manager/toggle-svp
+mp.add_key_binding(nil, "toggle-svp", function()
+    set_svp_active(not svp_runtime.active)
+end)
 
 -- Apply HDR passthrough settings (for HDR displays)
 local function apply_hdr_passthrough(target_peak)
@@ -798,6 +915,15 @@ function try_execute_profile()
     
     -- HWDEC & SVP Sync Engine Policy Application
     apply_svp_sync_policy(is_anime or should_run_global_svp)
+
+    -- Hand the live toggle what it needs to flip SVP either way for this file.
+    svp_runtime.available   = vapoursynth_available()
+    svp_runtime.script      = is_anime and "svp_anime.vpy" or "svp_cinema.vpy"
+    svp_runtime.filter      = is_anime and VF_FILTERS.svp_anime or VF_FILTERS.svp_cinema
+    svp_runtime.active      = (is_anime and svp_enabled) or should_run_global_svp
+    svp_runtime.wanted      = svp_runtime.active
+    svp_runtime.base_policy = (is_anime or should_run_global_svp)
+    publish_svp_state()
     
     -- OSD
     local show_osd = meta.osd_profile_messages
@@ -849,6 +975,13 @@ mp.register_event('start-file', function()
     state.profile_applied = false
     state.video_params_ready = false
     state.params_cache = nil
+
+    -- Nothing to toggle until the profile lands for the new file.
+    svp_runtime.active    = false
+    svp_runtime.wanted    = false
+    svp_runtime.filter    = nil
+    svp_runtime.available = false
+    publish_svp_state()
     
     -- Clear stale OSD from previous session
     mp.set_property("osd-playing-msg", "")

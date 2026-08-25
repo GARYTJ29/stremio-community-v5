@@ -1,0 +1,65 @@
+/*
+*   SVP LIVE TOGGLE STYLES
+*   Sized to sit in the player control bar next to the stock buttons.
+*/
+
+#kai-svp-toggle {
+    flex: 0 1 auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+
+    height: 100%;
+    padding: 0 1.2rem;
+    border-radius: 0.4rem;
+
+    cursor: pointer;
+    outline: none;
+    user-select: none;
+
+    color: var(--primary-foreground-color, #ffffff);
+    opacity: 0.4;
+    transition: opacity 0.15s ease-out, color 0.15s ease-out;
+}
+
+/* No VapourSynth, or no profile applied yet: nothing to toggle. */
+#kai-svp-toggle[data-svp="unavailable"] {
+    display: none;
+}
+
+#kai-svp-toggle:hover {
+    opacity: 0.8;
+}
+
+#kai-svp-toggle[data-svp="on"] {
+    opacity: 1;
+    color: var(--tertiary-accent-color, #8a5aff);
+}
+
+#kai-svp-toggle[data-svp="on"]:hover {
+    opacity: 0.85;
+}
+
+/* The d-pad focuses control-bar items programmatically, so the ring is the only
+   thing that says where it is. */
+#kai-svp-toggle:focus {
+    opacity: 1;
+    box-shadow: inset 0 0 0 0.2rem currentColor;
+}
+
+#kai-svp-toggle svg {
+    flex: none;
+    width: 1.8rem;
+    height: 1.8rem;
+    fill: currentColor;
+}
+
+#kai-svp-toggle .kai-svp-label {
+    font-family: 'Nata Sans', sans-serif;
+    font-size: 1.4rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    line-height: 1;
+    white-space: nowrap;
+}

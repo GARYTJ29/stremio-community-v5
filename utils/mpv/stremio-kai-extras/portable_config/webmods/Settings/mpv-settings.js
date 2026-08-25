@@ -966,6 +966,13 @@
       "<strong>Warning:</strong> High CPU and GPU load. May cause stutter on weaker systems when combined with stronger shaders.",
     );
     svpToggle.appendChild(svpNote);
+    // This toggle is only the starting point for each video; the player has a
+    // live switch (webmods/UI/svp-toggle.js) that does not write back here.
+    const svpLiveNote = createNote(
+      "info",
+      "<strong>Tip:</strong> This is the default for new playback. Use the <strong>SVP</strong> button in the player control bar, or <strong>Ctrl+S</strong>, to switch it on and off during a video.",
+    );
+    svpToggle.appendChild(svpLiveNote);
 
     // ─────────────────────────────────────────────────────────────────────────
     // WRAP & ORGANIZE SECTIONS
