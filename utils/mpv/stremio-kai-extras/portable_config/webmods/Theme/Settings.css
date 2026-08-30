@@ -111,21 +111,18 @@
 
 /*----------  TOGGLE  ----------*/
 
+/*
+ * --accent / --box-shadow / --outer-glow are Kai theme tokens that nothing in
+ * this shell defines. A declaration whose var() never resolves is not ignored,
+ * it computes to `unset` -- so the checked rule here used to blank the
+ * toggle's background instead of tinting it, leaving "on" transparent while
+ * "off" kept its grey. Stremio already colours the checked state green, so the
+ * override is gone and only the transition remains -- the 1px transparent
+ * border went with it, since it shrank the padding box and knocked the knob
+ * off centre.
+ */
 .toggle-toOWM {
-    border: 1px solid transparent;
-    box-shadow: var(--box-shadow);
-
     transition: 0.2s all ease-in-out;
-}
-
-.toggle-toOWM:hover {
-    border-color: var(--accent);
-    box-shadow: var(--box-shadow), var(--outer-glow);
-}
-
-.toggle-container-lZfHP.checked .toggle-toOWM {
-    background-color: var(--accent);
-    box-shadow: var(--box-shadow);
 }
 
 .button-container-zVLH6:focus {
@@ -347,10 +344,25 @@ kbd, .keyboard-shortcut,
     border-bottom: none;
 }
 
-.kai-api-key-row .option-name-container-exGMI {
-    flex-shrink: 0;
-    width: 25rem;
+/*
+ * Long-chain selector to outrank the generic `max-width: 22rem` cap at the top
+ * of this file. display:block puts the hint under the label instead of beside
+ * it; without it the label is a flex sibling squeezed to a couple of words wide.
+ */
+.settings-container-b0DCu .settings-content-lLXmk .sections-container-EUKAe
+  .section-container-twzKQ .option-container-EGlcv.kai-api-key-row
+  .option-name-container-exGMI {
+    display: block;
+    flex: 1 1 auto;
+    min-width: 0;
+    max-width: none;
     padding-right: 2rem;
+}
+
+.kai-api-key-row .label-FFamJ {
+    white-space: normal;
+    word-break: normal;
+    overflow-wrap: anywhere;
 }
 
 /* Hint text with link */
@@ -370,10 +382,6 @@ kbd, .keyboard-shortcut,
 .kai-api-key-hint a:hover {
     opacity: 0.8;
     text-decoration: underline;
-}
-
-.section-container-twzKQ.kai-api-keys-section.animation-fade-in .option-container-EGlcv.kai-api-key-row .option-name-container-exGMI {
-    display: block;     /* Changed from 'flex' to let it go under as a subtitle hint */
 }
 
 /* Language row in Preferences should never have :last-child margins (it's always the first item) */

@@ -1,10 +1,12 @@
 #include "player.h"
 #include <iostream>
 #include <cctype>
+#include <cmath>
 #include <cstring>
 #include <mutex>
 #include <shared_mutex>
 #include "../core/globals.h"
+#include "../utils/config.h"
 #include "../utils/crashlog.h"
 #include "../utils/helpers.h"
 #include "../ui/mainwindow.h"
@@ -168,8 +170,8 @@ void HandleMpvEvents()
                     j["data"]=nullptr;
                 break;
             }
-            if (j["name"] == "volume" && g_initialSet) {
-                g_currentVolume = j["data"];
+            if (j["name"] == "volume" && g_initialSet && j["data"].is_number()) {
+                NoteVolume((int)std::lround(j["data"].get<double>()));
             }
             if (j["name"] == "chapter-list") {
                 g_cachedChapterList = j["data"];
@@ -482,6 +484,10 @@ bool InitMPV(HWND hwnd)
     mpv_set_property_string(g_mpv,"cache-secs","60");
     mpv_set_property_string(g_mpv,"vd-lavc-threads","0");
     mpv_set_property_string(g_mpv,"ad-lavc-threads","0");
+    // mpv's own default is 130; the web UI's volume bar is seeded to [MPV]
+    // MaxVolume and clamps its own slider to that, so mpv has to be willing to
+    // go there.
+    mpv_set_property_string(g_mpv,"volume-max",std::to_string(g_settings.maxVolume).c_str());
     mpv_set_property_string(g_mpv,"audio-fallback-to-null","yes");
     mpv_set_property_string(g_mpv,"audio-client-name",APP_NAME);
     mpv_set_property_string(g_mpv,"title",APP_NAME);

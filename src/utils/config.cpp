@@ -10,6 +10,12 @@
 #include "../core/globals.h"
 #include "../utils/helpers.h"
 
+CachedSettings g_settings;
+
+// NoteVolume() fires on every slider nudge; the .ini is only rewritten once, on
+// the way out.
+static bool g_settingsDirty = false;
+
 // Return the path to "portable_config/stremio-settings.ini"
 static std::wstring GetIniPath()
 {
@@ -81,7 +87,7 @@ void LoadSettings()
     g_allowZoom = GetPrivateProfileIntW(L"General", L"AllowZoom", 0, iniPath.c_str());
     g_pauseOnMinimize = (GetPrivateProfileIntW(L"General", L"PauseOnMinimize", 1, iniPath.c_str()) == 1);
     g_pauseOnLostFocus = (GetPrivateProfileIntW(L"General", L"PauseOnLostFocus", 0, iniPath.c_str()) == 1);
-    g_isRpcOn = (GetPrivateProfileIntW(L"General", L"DiscordRPC", 1, iniPath.c_str()) == 1);
+    g_settings.discordRpc = (GetPrivateProfileIntW(L"General", L"DiscordRPC", 1, iniPath.c_str()) == 1);
 
     // Controller
     g_gamepadEnabled     = (GetPrivateProfileIntW(L"Controller", L"Enabled", 1, iniPath.c_str()) == 1);
@@ -103,7 +109,15 @@ void LoadSettings()
     char narrowVO[32];
     WideCharToMultiByte(CP_UTF8, 0, voBuffer, -1, narrowVO, 32, NULL, NULL);
     g_initialVO = narrowVO;
-    g_currentVolume = GetPrivateProfileIntW(L"MPV", L"InitialVolume", 50, iniPath.c_str());
+    // A hand-edited .ini could name a boosted level here; the remembered value is
+    // unboosted by definition, so clamp before it becomes the session's start.
+    g_settings.initialVolume = std::clamp(
+        (int)GetPrivateProfileIntW(L"MPV", L"InitialVolume", 50, iniPath.c_str()), 0, kMaxInitialVolume);
+    g_settings.maxVolume = std::clamp(
+        (int)GetPrivateProfileIntW(L"MPV", L"MaxVolume", kDefaultMaxVolume, iniPath.c_str()),
+        kMaxVolumeFloor, kMaxVolumeCeiling);
+    g_currentVolume = g_settings.initialVolume;
+    g_settingsDirty = false;
 
     // [Security] default-deny allow-lists
     static const wchar_t* kDefCmds =
@@ -127,7 +141,7 @@ void SaveSettings()
     const wchar_t* pauseMinVal  = g_pauseOnMinimize ? L"1" : L"0";
     const wchar_t* pauseFocVal  = g_pauseOnLostFocus ? L"1" : L"0";
     const wchar_t* allowZoomVal = g_allowZoom ? L"1" : L"0";
-    const wchar_t* rpcVal = g_isRpcOn ? L"1" : L"0";
+    const wchar_t* rpcVal = g_settings.discordRpc ? L"1" : L"0";
 
     WritePrivateProfileStringW(L"General", L"CloseOnExit", closeVal, iniPath.c_str());
     WritePrivateProfileStringW(L"General", L"UseDarkTheme", darkVal, iniPath.c_str());
@@ -135,7 +149,8 @@ void SaveSettings()
     WritePrivateProfileStringW(L"General", L"PauseOnLostFocus", pauseFocVal, iniPath.c_str());
     WritePrivateProfileStringW(L"General", L"AllowZoom", allowZoomVal, iniPath.c_str());
     WritePrivateProfileStringW(L"General", L"DiscordRPC", rpcVal, iniPath.c_str());
-    WriteIntToIni(L"MPV", L"InitialVolume", g_currentVolume, iniPath);
+    WriteIntToIni(L"MPV", L"InitialVolume", g_settings.initialVolume, iniPath);
+    WriteIntToIni(L"MPV", L"MaxVolume", g_settings.maxVolume, iniPath);
 
     WritePrivateProfileStringW(L"Controller", L"Enabled",   g_gamepadEnabled   ? L"1" : L"0", iniPath.c_str());
     WritePrivateProfileStringW(L"Controller", L"Vibration", g_gamepadVibration ? L"1" : L"0", iniPath.c_str());
@@ -145,6 +160,34 @@ void SaveSettings()
     WriteIntToIni(L"Controller", L"Deadzone",    g_gamepadDeadzone,    iniPath);
     WriteIntToIni(L"Controller", L"RepeatDelay", g_gamepadRepeatDelay, iniPath);
     WriteIntToIni(L"Controller", L"RepeatRate",  g_gamepadRepeatRate,  iniPath);
+
+    g_settingsDirty = false;
+}
+
+// The web UI owns the Discord toggle (see webmods/Settings/discord-rpc-bridge.js);
+// this is an explicit user action, so it is persisted straight away rather than
+// waiting for the exit flush.
+void SetDiscordRpc(bool on)
+{
+    if (g_settings.discordRpc == on) return;
+    g_settings.discordRpc = on;
+    SaveSettings();
+}
+
+void NoteVolume(int volume)
+{
+    g_currentVolume = std::clamp(volume, 0, g_settings.maxVolume);
+
+    // Boost is session-only: the next launch starts from the last normal level.
+    int remembered = (std::min)(g_currentVolume, kMaxInitialVolume);
+    if (remembered == g_settings.initialVolume) return;
+    g_settings.initialVolume = remembered;
+    g_settingsDirty = true;
+}
+
+void FlushSettings()
+{
+    if (g_settingsDirty) SaveSettings();
 }
 
 static void WriteIntToIni(const std::wstring &section, const std::wstring &key, int value, const std::wstring &iniPath)

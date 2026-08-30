@@ -90,6 +90,7 @@ extern wil::com_ptr<ICoreWebView2_21>         g_webview;
 #define ID_TRAY_PICTURE_IN_PICTURE 1007
 #define ID_TRAY_QUIT             1008
 #define ID_TRAY_CONTROLLER       1009
+#define ID_TRAY_DISCORD_RPC      1010
 
 struct MenuItem
 {
@@ -117,7 +118,6 @@ extern HWND            g_trayHwnd;
 extern bool g_pauseOnMinimize;
 extern bool g_pauseOnLostFocus;
 extern bool g_allowZoom;
-extern bool g_isRpcOn;
 
 // Controller (gamepad) support
 extern bool g_gamepadEnabled;

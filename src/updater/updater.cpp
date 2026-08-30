@@ -4,6 +4,7 @@
 #include <openssl/sha.h>
 #include <curl/curl.h>
 #include "../core/globals.h"
+#include "../utils/config.h"
 #include "../utils/crashlog.h"
 #include "../utils/helpers.h"
 #include "../node/server.h"
@@ -302,6 +303,7 @@ void RunInstallerAndExit()
         AppendToCrashLog(L"[UPDATER]: Failed to start installer via ShellExecute.");
     }
 
+    FlushSettings();  // exit(0) below skips WM_DESTROY
     PostQuitMessage(0);
     exit(0);
 }

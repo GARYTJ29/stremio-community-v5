@@ -71,7 +71,6 @@ HWND            g_trayHwnd   = nullptr;
 bool g_pauseOnMinimize   = true;
 bool g_pauseOnLostFocus  = false;
 bool g_allowZoom         = false;
-bool g_isRpcOn = true;
 
 // Controller (gamepad) support
 bool g_gamepadEnabled     = true;

@@ -150,6 +150,20 @@ static void UpdateTheme(HWND hWnd)
 #endif
 }
 
+// Settings the page renders but the shell owns. `window.__shellSettings` seeds
+// them synchronously at document-created; this push keeps them honest, since
+// that injected script is registered once and still carries startup values
+// after a tray toggle or a page reload.
+void SendShellSettings()
+{
+    nlohmann::json j;
+    j["discordRpc"]     = g_settings.discordRpc;
+    j["initialVolume"]  = g_settings.initialVolume;
+    j["maxVolume"]      = g_settings.maxVolume;
+    j["gamepadEnabled"] = g_gamepadEnabled;
+    SendToJS("shell-settings", j);
+}
+
 void HandleEvent(const std::string &ev, std::vector<std::string> &args)
 {
     if(ev=="mpv-command"){
@@ -198,6 +212,19 @@ void HandleEvent(const std::string &ev, std::vector<std::string> &args)
         g_isAppReady=true;
         HideSplash();
         PostMessage(g_hWnd, WM_NOTIFY_FLUSH, 0, 0);
+        SendShellSettings();
+    } else if(ev=="set-gamepad-enabled"){
+        // The General settings row added by
+        // webmods/Settings/general-shell-settings.js, mirroring the tray's
+        // Controller Support item.
+        g_gamepadEnabled = !args.empty() && (args[0] == "1" || args[0] == "true");
+        SaveSettings();
+        ApplyGamepadEnabled();
+    } else if(ev=="set-discord-rpc"){
+        // Stremio's own "Show Discord Rich Presence" toggle, relayed by
+        // webmods/Settings/discord-rpc-bridge.js. [General] DiscordRPC is only
+        // the seed for a profile that has never stored one.
+        SetDiscordRpc(!args.empty() && (args[0] == "1" || args[0] == "true"));
     } else if(ev=="update-requested"){
         RunInstallerAndExit();
     } else if(ev == "seek-hover") {
@@ -507,6 +534,15 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
             g_gamepadEnabled = !g_gamepadEnabled;
             SaveSettings();
             ApplyGamepadEnabled();
+            SendShellSettings();  // keep an open settings page in step
+            break;
+        case ID_TRAY_DISCORD_RPC:
+            // Mirrors Stremio's own "Show Discord Rich Presence" toggle. The
+            // shell flag takes effect immediately; SendShellSettings() lets
+            // discord-rpc-bridge.js relay the new value back into localProfile
+            // so the settings UI stays in step.
+            SetDiscordRpc(!g_settings.discordRpc);
+            SendShellSettings();
             break;
         case ID_TRAY_PAUSE_FOCUS_LOST:
             g_pauseOnLostFocus=!g_pauseOnLostFocus;
@@ -646,6 +682,8 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
         break;
     case WM_DESTROY:
     {
+        // Last chance to write the volume the session ended on.
+        FlushSettings();
         // release mutex
         if(g_hMutex) { CloseHandle(g_hMutex); g_hMutex=nullptr; }
         PostQuitMessage(0);

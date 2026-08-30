@@ -7,6 +7,7 @@
 #include <Shlwapi.h>
 #include <wrl.h>
 #include "../core/globals.h"
+#include "../utils/config.h"
 #include "../utils/crashlog.h"
 #include "../utils/helpers.h"
 #include "../ui/mainwindow.h"
@@ -1123,9 +1124,32 @@ static void SetupExtensions()
     }
 }
 
+// The webmods that mirror shell settings into the web UI's `localProfile` have
+// to decide whether to seed it *before* the page's StorageProvider reads
+// localStorage -- once React has its copy, a later write just gets clobbered.
+// Handing them the cache as a plain global at document-created time is the only
+// point early enough; the async "shell-settings" message is not.
+static void InjectShellSettings()
+{
+    if (!g_webview) return;
+
+    nlohmann::json j;
+    j["discordRpc"]     = g_settings.discordRpc;
+    j["initialVolume"]  = g_settings.initialVolume;
+    j["maxVolume"]      = g_settings.maxVolume;
+    j["gamepadEnabled"] = g_gamepadEnabled;
+
+    const std::wstring script =
+        L"window.__shellSettings = " + Utf8ToWstring(j.dump()) + L";";
+    g_webview->AddScriptToExecuteOnDocumentCreated(script.c_str(), nullptr);
+}
+
 static void SetupWebMods()
 {
     if (!g_webview) return;
+
+    // Registered first so it wins the document-created ordering.
+    InjectShellSettings();
 
     wchar_t buf[MAX_PATH];
     GetModuleFileNameW(nullptr, buf, MAX_PATH);

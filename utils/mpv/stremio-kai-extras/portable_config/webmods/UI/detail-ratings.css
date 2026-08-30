@@ -1,0 +1,75 @@
+/* Detail Page Ratings - multi-source rating row injected into Stremio v5 detail pages */
+
+.kai-detail-ratings {
+    display: flex;
+    flex-flow: row wrap;
+    align-items: center;
+    gap: 0.5rem 0.85rem;
+    width: 100%;
+    margin: 0.75rem 0 0.25rem;
+}
+
+.kai-detail-ratings:empty {
+    display: none;
+}
+
+.kai-detail-rating {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.28rem 0.55rem;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--primary-foreground-color, #fff);
+    font-size: 0.95rem;
+    font-weight: 600;
+    line-height: 1;
+    text-decoration: none;
+    white-space: nowrap;
+    transition: background 0.15s ease;
+}
+
+a.kai-detail-rating:hover {
+    background: rgba(255, 255, 255, 0.14);
+    cursor: pointer;
+}
+
+.kai-detail-rating-logo {
+    display: inline-flex;
+    align-items: center;
+    height: 1.05rem;
+    width: auto;
+    flex: 0 0 auto;
+}
+
+.kai-detail-rating-logo.kai-detail-rating-svg,
+.kai-detail-rating-logo.kai-detail-rating-svg svg {
+    height: 1.05rem;
+    width: 1.05rem;
+}
+
+.kai-detail-rating.kai-letterboxd .kai-detail-rating-logo { height: 0.8rem; }
+.kai-detail-rating.kai-tmdb .kai-detail-rating-logo { height: 0.85rem; }
+.kai-detail-rating.kai-mdblist .kai-detail-rating-logo { height: 1rem; }
+
+.kai-detail-rating-text {
+    display: inline-block;
+}
+
+/* Rotten Tomatoes */
+.kai-detail-rating.kai-rt-fresh .kai-detail-rating-text { color: #fa320a; }
+.kai-detail-rating.kai-rt-rotten .kai-detail-rating-text { color: #0ac855; }
+
+/* Metacritic */
+.kai-detail-rating.kai-mc-high .kai-detail-rating-text { color: #00ce7a; }
+.kai-detail-rating.kai-mc-medium .kai-detail-rating-text { color: #ffbd3f; }
+.kai-detail-rating.kai-mc-low .kai-detail-rating-text { color: #ff6874; }
+
+/* TMDB */
+.kai-detail-rating.kai-tmdb .kai-detail-rating-text { color: #01b4e4; }
+
+/* MDBList aggregate score */
+.kai-detail-rating.kai-mdb-great .kai-detail-rating-text { color: #2ecc71; }
+.kai-detail-rating.kai-mdb-good .kai-detail-rating-text { color: #a3d977; }
+.kai-detail-rating.kai-mdb-mixed .kai-detail-rating-text { color: #ffbd3f; }
+.kai-detail-rating.kai-mdb-bad .kai-detail-rating-text { color: #ff6874; }

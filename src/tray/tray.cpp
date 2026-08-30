@@ -6,6 +6,7 @@
 #include <windowsx.h>
 
 #include "../core/globals.h"
+#include "../utils/config.h"
 #include "../utils/crashlog.h"
 #include "../utils/helpers.h"
 #include "../ui/mainwindow.h"
@@ -126,6 +127,7 @@ static void ShowDarkTrayMenu()
     g_menuItems.push_back({ ID_TRAY_CLOSE_ON_EXIT, g_closeOnExit,  false, L"Close on Exit" });
     g_menuItems.push_back({ ID_TRAY_USE_DARK_THEME, g_useDarkTheme, false, L"Use Dark Theme" });
     g_menuItems.push_back({ ID_TRAY_CONTROLLER,   g_gamepadEnabled, false, L"Controller Support" });
+    g_menuItems.push_back({ ID_TRAY_DISCORD_RPC,  g_settings.discordRpc, false, L"Show Status on Discord" });
     g_menuItems.push_back({ 0, false, true, L"" });
     g_menuItems.push_back({ ID_TRAY_QUIT, false, false, L"Quit" });
 

@@ -1,0 +1,44 @@
+/**
+ * Volume Boost — tints the part of the volume bar above 100%.
+ *
+ * The ramp is anchored to the bar, not to the current level: it starts fully
+ * transparent at the 100 mark, reaches solid yellow halfway up the boost range,
+ * and ends red at the ceiling. With a 200 ceiling that is 100-150 fading to
+ * yellow and 150-200 fading to red; with a 150 ceiling the midpoint lands at
+ * 125.
+ *
+ * Transparent-yellow rather than white at the 100 mark is what makes it blend:
+ * the slider's own fill colour shows straight through, so there is no seam
+ * where the ramp begins. It has to be written `rgba(…, 0)` and not
+ * `transparent` — the `transparent` keyword is rgba(0,0,0,0), and interpolating
+ * from it drags the ramp through muddy dark tones.
+ *
+ * It is a background-image on the fill element itself, which is the whole
+ * trick. The fill's background-colour shows underneath, its geometry is matched
+ * by definition, and the mask Stremio already applies to it (--mask-width, set
+ * to the current value) clips the ramp to how far the slider has been pushed —
+ * so there is nothing here to position, measure, or stack against the thumb.
+ *
+ * Applies to both volume sliders — the one in the control bar and the one in
+ * the mid-screen indicator shown while changing volume — since they are the
+ * same component and both carry a `volume-slider-*` class. Hash suffixes rotate
+ * with the bundle, hence the substring matching.
+ *
+ * The stops are set on :root by volume-boost.js; the fallbacks describe a 200%
+ * ceiling, so a stale or missing script still leaves the bar sensible.
+ */
+
+:root {
+  --kai-volume-boost-start: 50%;
+  --kai-volume-boost-mid: 75%;
+}
+
+[class*="volume-slider"] [class*="track-after"] {
+  background-image: linear-gradient(
+    to right,
+    rgba(242, 201, 76, 0) 0,
+    rgba(242, 201, 76, 0) var(--kai-volume-boost-start),
+    rgba(242, 201, 76, 1) var(--kai-volume-boost-mid),
+    #eb3b3b 100%
+  );
+}

@@ -1,5 +1,6 @@
 #include <iostream>
 #include "../core/globals.h"
+#include "../utils/config.h"
 #include "crashlog.h"
 #include "discord_rpc.h"
 
@@ -136,7 +137,7 @@ static void SetDiscordDiscoverPresence(const char *const details, const char *co
 }
 
 void SetDiscordPresenceFromArgs(const std::vector<std::string>& args) {
-    if (!g_isRpcOn || args.empty()) {
+    if (!g_settings.discordRpc || args.empty()) {
         return;
     }
 
