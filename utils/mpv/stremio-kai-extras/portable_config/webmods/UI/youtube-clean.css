@@ -1,0 +1,38 @@
+/*
+*   YOUTUBE CLEAN  —  strip the embedded YouTube player chrome
+*
+*   For reference: applies to YouTube sources from the "youtubio" addon
+*   (youtubio.elfhosted.com), played through Stremio's built-in YouTube player.
+*
+*   Stremio plays a YouTube source through a cross-origin <iframe> (#widget2,
+*   inside .video-tkpQm). Nothing running in this frame can reach into that
+*   iframe, so YouTube's own title bar / centre play button / pause overlay /
+*   end-screen cards / right-click menu cannot be deleted node by node. They
+*   can only be suppressed by making the iframe non-interactive:
+*
+*     - with no pointer events the iframe never receives the mousemove that
+*       makes its hover chrome appear, and
+*     - clicks can no longer land on it to pause it into the paused-state UI.
+*
+*   Stremio drives playback through the YouTube IFrame API, not mouse input,
+*   so it keeps full control of play / pause / seek. youtube-clean.js drops a
+*   transparent catcher over the iframe so click-to-pause still works without
+*   going through YouTube's interface.
+*/
+
+.video-tkpQm iframe,
+#widget2 {
+    pointer-events: none !important;
+    border: 0 !important;
+    background-color: #000 !important;
+}
+
+/* Transparent overlay owned by youtube-clean.js — sits directly above the
+   iframe but below Stremio's own control-bar / nav layers. */
+.kai-yt-click-catcher {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    background: transparent;
+    cursor: default;
+}
