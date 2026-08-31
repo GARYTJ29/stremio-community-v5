@@ -34,6 +34,7 @@
   let trackDiagnosticSequence = 0;
 
   const SMART_TRACK_STORAGE_KEYS = {
+    enabled: "kai-smart-track-enabled",
     match_audio_to_video: "kai-smart-track-match-audio",
     use_forced_for_native: "kai-smart-track-use-forced",
     audio_reject_langs: "kai-smart-track-reject-audio",
@@ -316,6 +317,7 @@
       audio_reject_keywords: fromCustom("audio_reject_keywords"),
       sub_reject_keywords: fromCustom("sub_reject_keywords"),
 
+      enabled: customConfig.enabled,
       match_audio_to_video: customConfig.match_audio_to_video,
       use_forced_for_native: customConfig.use_forced_for_native,
 

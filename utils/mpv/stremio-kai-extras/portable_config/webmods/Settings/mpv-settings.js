@@ -29,6 +29,7 @@
     colorProfile: "kai-color-profile",
     iccProfile: "kai-icc-profile",
     // Smart Track Logic
+    SMART_TRACKS: "kai-smart-track-enabled",
     MATCH_AUDIO: "kai-smart-track-match-audio",
     USE_FORCED_SUBS: "kai-smart-track-use-forced",
 
@@ -1014,6 +1015,20 @@
     // Audio Smart Tracks Fragment
     const audioFrag = document.createDocumentFragment();
 
+    // Master switch for everything smart-track-selector does, audio and
+    // subtitles alike. Off hands both back to mpv and Stremio's own picker.
+    audioFrag.appendChild(
+      createToggleOption(
+        "Smart Track Selection",
+        "Pick audio and subtitle tracks by language instead of file order. Off leaves both to Stremio.",
+        safeGet(STORAGE_KEYS.SMART_TRACKS, true),
+        (val) => {
+          safeSet(STORAGE_KEYS.SMART_TRACKS, val);
+          sendConfigUpdate();
+        },
+      ),
+    );
+
     // 1. Audio Preset Dropdown
     audioFrag.appendChild(
       createDropdownOption(
@@ -1379,6 +1394,9 @@
     }
 
     return {
+      // Absent from storage means never toggled, which is on by default -- the
+      // other getBool fields all default off, so this one cannot use it.
+      enabled: localStorage.getItem(STORAGE_KEYS.SMART_TRACKS) !== "false",
       match_audio_to_video: getBool(STORAGE_KEYS.MATCH_AUDIO),
       use_forced_for_native: getBool(STORAGE_KEYS.USE_FORCED_SUBS),
 
