@@ -22,5 +22,6 @@ bool URLContainsAny(const std::wstring& url);
 bool FetchAndParseWhitelist();
 void ScaleWithDPI();
 bool ReadFileUtf8(const std::wstring& path, std::string& out);
+void ForceForegroundWindow(HWND hWnd);
 
 #endif // HELPERS_H

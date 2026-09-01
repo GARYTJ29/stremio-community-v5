@@ -131,13 +131,24 @@ int main(int argc, char *argv[]) {
 
   // Load Saved position
   WINDOWPLACEMENT wp;
+  bool restoredMinimized = false;
   if (LoadWindowPlacement(wp)) {
     SetWindowPlacement(g_hWnd, &wp);
     ShowWindow(g_hWnd, wp.showCmd);
     UpdateWindow(g_hWnd);
+    restoredMinimized = (wp.showCmd == SW_SHOWMINIMIZED || wp.showCmd == SW_MINIMIZE);
   } else {
     ShowWindow(g_hWnd, SW_SHOW);
     UpdateWindow(g_hWnd);
+  }
+
+  // When launched by another process (Xbox Game Bar / One Game Launcher, a
+  // shortcut host, the updater relaunch) Windows withholds foreground rights,
+  // so the window would otherwise come up behind or unfocused - and a
+  // controller cannot make it fullscreen from there. Skip it only if the user
+  // last left the shell minimized.
+  if (!restoredMinimized) {
+    ForceForegroundWindow(g_hWnd);
   }
 
   // create splash

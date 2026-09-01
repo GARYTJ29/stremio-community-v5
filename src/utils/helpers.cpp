@@ -355,3 +355,48 @@ std::wstring MakeInjectJsScript(const std::wstring&,const std::string& jsUtf8)
 
     return ss.str();
 }
+
+// Pull a window to the foreground even when this process does not currently own
+// the foreground - which is the case when the shell is started by another app
+// (Xbox Game Bar / "One Game Launcher", a shortcut host, an updater relaunch).
+// Windows blocks a plain SetForegroundWindow() there, so the window comes up
+// behind or unfocused and a controller cannot drive it. Attaching to the
+// current foreground thread's input queue for the duration of the call lifts
+// that restriction; the lock-timeout reset covers the case where nothing has a
+// foreground window yet.
+void ForceForegroundWindow(HWND hWnd)
+{
+    if (!hWnd) return;
+
+    if (IsIconic(hWnd)) ShowWindow(hWnd, SW_RESTORE);
+
+    HWND  fg       = GetForegroundWindow();
+    DWORD fgThread = fg ? GetWindowThreadProcessId(fg, nullptr) : 0;
+    DWORD myThread = GetCurrentThreadId();
+
+    DWORD lockTimeout = 0;
+    SystemParametersInfoW(SPI_GETFOREGROUNDLOCKTIMEOUT, 0, &lockTimeout, 0);
+    SystemParametersInfoW(SPI_SETFOREGROUNDLOCKTIMEOUT, 0, (PVOID)0, SPIF_SENDCHANGE);
+
+    bool attached = (fgThread && fgThread != myThread &&
+                     AttachThreadInput(myThread, fgThread, TRUE));
+
+    AllowSetForegroundWindow(ASFW_ANY);
+    ShowWindow(hWnd, SW_SHOW);
+    SetForegroundWindow(hWnd);
+    BringWindowToTop(hWnd);
+    SetActiveWindow(hWnd);
+    SetFocus(hWnd);
+
+    if (attached) AttachThreadInput(myThread, fgThread, FALSE);
+
+    SystemParametersInfoW(SPI_SETFOREGROUNDLOCKTIMEOUT, 0,
+                          (PVOID)(UINT_PTR)lockTimeout, SPIF_SENDCHANGE);
+
+    // Fallback for the rare case the attach dance still loses the race: bouncing
+    // our own window through minimize/restore is always allowed to activate.
+    if (GetForegroundWindow() != hWnd) {
+        ShowWindow(hWnd, SW_MINIMIZE);
+        ShowWindow(hWnd, SW_RESTORE);
+    }
+}

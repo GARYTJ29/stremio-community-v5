@@ -24,13 +24,14 @@ bool FocusExistingInstance(const std::wstring &protocolArg)
 {
     HWND hExistingWnd = FindWindowW(APP_CLASS, nullptr);
     if(hExistingWnd) {
-        if(IsIconic(hExistingWnd)) {
-            ShowWindow(hExistingWnd, SW_RESTORE);
-        } else if(!IsWindowVisible(hExistingWnd)) {
+        if(!IsWindowVisible(hExistingWnd)) {
             ShowWindow(hExistingWnd, SW_SHOW);
         }
-        SetForegroundWindow(hExistingWnd);
-        SetFocus(hExistingWnd);
+        // A second launch (e.g. re-triggering the Game Bar tile while the shell
+        // is already in the tray) runs in this short-lived process, which has no
+        // foreground rights - so hand the existing window the same forced
+        // activation a cold start gets instead of a bare SetForegroundWindow.
+        ForceForegroundWindow(hExistingWnd);
         if(!protocolArg.empty()) {
             COPYDATASTRUCT cds;
             cds.dwData = 1;

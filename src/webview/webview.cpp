@@ -692,8 +692,12 @@ void InitWebView2(HWND hWnd)
     // Setup environment
     Microsoft::WRL::ComPtr<ICoreWebView2EnvironmentOptions> options = Microsoft::WRL::Make<CoreWebView2EnvironmentOptions>();
     if(options){
+        // RestrictGamepadAccess gates navigator.getGamepads() on the page having
+        // received a real user gesture, so on a cold start the controller reads
+        // as connected but dead until the first click. This shell is the only
+        // thing in the window and drives the pad itself, so opt back out.
         options->put_AdditionalBrowserArguments(
-            L"--autoplay-policy=no-user-gesture-required --disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection"
+            L"--autoplay-policy=no-user-gesture-required --disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection,RestrictGamepadAccess"
         );
         Microsoft::WRL::ComPtr<ICoreWebView2EnvironmentOptions6> options6;
         if(SUCCEEDED(options.As(&options6))) {
@@ -842,6 +846,21 @@ static void SetupWebMessageHandler()
                         sender->ExecuteScript(script.c_str(), nullptr);
                     }
                     g_scriptQueue.clear();
+                }
+                // When the shell is launched by another process (Xbox Game Bar)
+                // the webview child window never receives keyboard focus, so
+                // Chromium treats the document as unfocused and refuses to paint
+                // :focus outlines - the gamepad's purple selection ring stays
+                // invisible until the user clicks the page. Hand focus to the
+                // webview once the first page is up, but only while our window
+                // actually holds the foreground so we don't steal it back from
+                // whatever the user alt-tabbed to (that path is covered by
+                // WM_ACTIVATE).
+                static bool s_webviewFocusPushed = false;
+                if (!s_webviewFocusPushed && g_webviewController &&
+                    GetForegroundWindow() == g_hWnd) {
+                    s_webviewFocusPushed = true;
+                    g_webviewController->MoveFocus(COREWEBVIEW2_MOVE_FOCUS_REASON_PROGRAMMATIC);
                 }
             } else {
                 std::cout<<"[WEBVIEW]: Navigation failed\n";
