@@ -452,8 +452,10 @@ end
 local function apply_sdr_baseline()
     log("Applying SDR baseline (clean slate)")
     
-    -- 0. Reset hwdec to safe default (prevents auto-copy from sticking)
-    mp.set_property("hwdec", "auto")
+    -- 0. Reset hwdec to the D3D11 path (prevents auto-copy from sticking). Pinned
+    -- rather than "auto" so mpv never falls through to nvdec: nvcuvid.dll faults on
+    -- some 4K AV1 streams, and d3d11vpp wants native D3D11 frames anyway.
+    mp.set_property("hwdec", "d3d11va")
     
     -- 1. Reset Rendering Chains (prevents bleed-over without resetting global prefs like volume)
     mp.set_property("glsl-shaders", "")   -- Clear all shaders
@@ -468,10 +470,10 @@ local function apply_sdr_baseline()
     mp.set_property("tone-mapping", "auto")           -- Reset tone mapping
 end
 
--- Apply SVP sync engine policies (forces hwdec=auto-copy and real-time frame sync settings when active)
+-- Apply SVP sync engine policies (forces hwdec=d3d11va-copy and real-time frame sync settings when active)
 local function apply_svp_sync_policy(active)
     if active then
-        mp.set_property("hwdec", "auto-copy")
+        mp.set_property("hwdec", "d3d11va-copy")
         mp.set_property("hr-seek-framedrop", "no")
         mp.set_property("video-latency-hacks", "yes")
         mp.set_property("mc", "0")
@@ -482,7 +484,7 @@ local function apply_svp_sync_policy(active)
         mp.set_property("vd-queue-max-secs", "60")
         log("SVP Engine Active: applied real-time sync & enlarged queue buffer (1024MiB / 120 samples)")
     else
-        mp.set_property("hwdec", "auto")
+        mp.set_property("hwdec", "d3d11va")
         mp.set_property("hr-seek-framedrop", "yes")
         mp.set_property("video-latency-hacks", "no")
         mp.set_property("mc", "-1")

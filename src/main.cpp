@@ -4,6 +4,7 @@
 #include "discord_rpc.h"
 #include <windows.h>
 #include <VersionHelpers.h>
+#include <cstdint>
 #include <gdiplus.h>
 #include <iostream>
 #include <shellscalingapi.h>
@@ -25,11 +26,51 @@
 int main(int argc, char *argv[]) {
   // Catch unhandled exceptions
   SetUnhandledExceptionFilter([](EXCEPTION_POINTERS *info) -> LONG {
+    const EXCEPTION_RECORD *rec = info->ExceptionRecord;
+
+    // Record where it faulted before touching anything else. The owning module is
+    // what makes a bare 0xc0000005 attributable (libmpv vs WebView2 vs us).
     std::wstringstream ws;
-    ws << L"Unhandled exception! Code=0x" << std::hex
-       << info->ExceptionRecord->ExceptionCode;
+    ws << L"Unhandled exception! Code=0x" << std::hex << rec->ExceptionCode
+       << L" at 0x" << (uintptr_t)rec->ExceptionAddress;
+    HMODULE mod = nullptr;
+    if (GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+                               GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                           (LPCWSTR)rec->ExceptionAddress, &mod) &&
+        mod) {
+      wchar_t modPath[MAX_PATH] = {};
+      if (GetModuleFileNameW(mod, modPath, MAX_PATH)) {
+        const wchar_t *name = wcsrchr(modPath, L'\\');
+        ws << L" in " << (name ? name + 1 : modPath);
+      }
+    }
+    if (rec->ExceptionCode == EXCEPTION_ACCESS_VIOLATION &&
+        rec->NumberParameters >= 2) {
+      ws << (rec->ExceptionInformation[0] ? L" writing 0x" : L" reading 0x")
+         << std::hex << rec->ExceptionInformation[1];
+    }
     AppendToCrashLog(ws.str());
-    Cleanup();
+
+    // Cleanup() takes g_mpvMutex and then blocks in mpv_terminate_destroy(). This
+    // filter runs on the faulting thread, so if that thread already holds the mutex
+    // -- which is exactly where an mpv-side fault lands -- calling it directly
+    // self-deadlocks and the app hangs forever instead of dying. Give it its own
+    // thread and a deadline, then go down whether or not it finished.
+    HANDLE cleanupThread = CreateThread(
+        nullptr, 0,
+        [](LPVOID) -> DWORD {
+          Cleanup();
+          return 0;
+        },
+        nullptr, 0, nullptr);
+    if (cleanupThread) {
+      WaitForSingleObject(cleanupThread, 3000);
+      CloseHandle(cleanupThread);
+    }
+
+    // Never return to the faulting instruction, and never let a wedged cleanup keep
+    // the process -- and its window -- alive.
+    TerminateProcess(GetCurrentProcess(), rec->ExceptionCode);
     return EXCEPTION_EXECUTE_HANDLER;
   });
   atexit(Cleanup);

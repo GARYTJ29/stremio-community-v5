@@ -43,6 +43,10 @@ const FFMPEG_FOLDER = path.join(SOURCE_DIR, 'utils', 'windows', 'ffmpeg');
 const MPV_FOLDER = path.join(SOURCE_DIR, 'utils', 'mpv', 'anime4k');
 const STREMIO_KAI_EXTRAS_FOLDER = path.join(SOURCE_DIR, 'utils', 'mpv', 'stremio-kai-extras');
 const THUMBFAST_ARCHIVE = path.join(SOURCE_DIR, 'utils', 'mpv', 'thumbfast', 'thumbfast.7z');
+// Our fork of thumbfast.lua (adds the timeline thumbnail cache) plus its conf. Kept
+// as plain source next to the archive and copied over the extracted copies, so the
+// script stays reviewable in git and the .7z is only the carrier for its mpv.exe.
+const THUMBFAST_PATCH_FOLDER = path.join(SOURCE_DIR, 'utils', 'mpv', 'thumbfast', 'patch');
 const DEFAULT_SETTINGS_FOLDER = path.join(SOURCE_DIR, 'utils', 'stremio');
 
 // Optional: VapourSynth core + SVP's svpflow plugin, needed for SVP frame interpolation.
@@ -146,6 +150,8 @@ const VCPKG_CMAKE = path.join(VCPKG_ROOT, 'scripts', 'buildsystems', 'vcpkg.cmak
         copyFolderContentsPreservingStructure(MPV_FOLDER, DIST_DIR);
         copyFolderContentsPreservingStructure(STREMIO_KAI_EXTRAS_FOLDER, DIST_DIR);
         extractThumbfastArchive();
+        // Over the top of the archive: the forked thumbfast.lua + conf.
+        copyFolderContentsPreservingStructure(THUMBFAST_PATCH_FOLDER, DIST_DIR);
         // Copied last: the ThumbFast archive ships its own stale stremio-settings.ini
         // that would otherwise clobber the defaults in utils/stremio/.
         copyFolderContentsPreservingStructure(DEFAULT_SETTINGS_FOLDER, CONFIG_DIR);
