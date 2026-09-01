@@ -270,11 +270,19 @@ R"JS(
     //
     // So a held direction is driven as one long drag of the UI's own seek bar
     // instead. Slider registers its window listeners from onMouseDown there and
-    // then; its mousemove only moves the label and the thumb, and the seek is
-    // the single mouseup at the end. That is exactly the shape wanted here - the
-    // target moves as fast as the direction is held, and the player is asked for
-    // it once, when the moving stops - and it keeps the overlay honest, since the
-    // UI is doing its own seeking throughout.
+    // then; its mousemove only moves the label and the thumb, and the commit is
+    // the single mouseup at the end. That is the shape wanted here - the target
+    // moves as fast as the direction is held, the drag is closed once, and the
+    // overlay stays honest because the Slider is the one being driven.
+    //
+    // On top of that, while the drag is open playback is paused and time-pos is
+    // pushed to the running target each step, so the destination frame is on
+    // screen the whole way there rather than the film carrying on from where the
+    // drag began (mpv shows the frame because it is paused). Letting go unpauses
+    // and play picks up from wherever the drag was left - unless it was already
+    // paused before the drag, in which case it stays that way. Pause and time-pos
+    // are how the web UI's own player already works, so its play button and clock
+    // follow on their own.
     //
     // The step grows with the length of the run, so a nudge is still a nudge.
     // Ten seconds is the web UI's own default for one press of an arrow.
@@ -286,9 +294,35 @@ R"JS(
     // Comfortably longer than one repeat interval: this is the net for a release
     // that never lands (pad unplugged, window blurred mid-hold).
     var SEEK_IDLE_MS = 900;
+    // The first presses of a gesture are left to the UI's own seek key: it
+    // commits at once, mpv renders the frame it lands on and playback carries
+    // on from there - which is exactly what an accidental nudge wants. Only a
+    // sustained run - another press before the previous one has aged out -
+    // escalates to the paused drag above.
+    var SEEK_PRIME_TAPS = 2;
+    var SEEK_GESTURE_MS = 650;   // longer than one repeat interval (300ms)
 
     var scrub = null;
     var scrubDuration = 0;
+    var seekPrimeCount = 0;
+    var seekPrimeAt = 0;
+    var seekPrimeDir = 0;
+
+    // Whether playback is stopped right now, off the "pause" changes the web
+    // UI's own observer already puts on the wire (same source power-menu.js
+    // reads). Only so a drag begun from a pause is left paused when it commits
+    // instead of starting the film. Null until the first change is heard, which
+    // reads as "playing" - the common case, and the safe default.
+    var playbackPaused = null;
+    if (window.chrome && window.chrome.webview) {
+        window.chrome.webview.addEventListener('message', function (e) {
+            var m = e && e.data;
+            if (typeof m === 'string') { try { m = JSON.parse(m); } catch (x) { return; } }
+            if (!m || !m.args || m.args[0] !== 'mpv-prop-change') return;
+            var c = m.args[1];
+            if (c && c.name === 'pause') playbackPaused = (c.data === true || c.data === 'yes');
+        });
+    }
 
     function parseClock(text) {
         var s = String(text || '');
@@ -338,7 +372,7 @@ R"JS(
             slider: slider, rect: rect,
             y: Math.round(rect.top + rect.height / 2),
             duration: scrubDuration, target: Math.min(times.at, scrubDuration),
-            dir: 0, run: 0, timer: 0
+            dir: 0, run: 0, timer: 0, paused: false, wasPaused: playbackPaused === true
         };
         // onSlide fires with the position it is already at, so nothing moves -
         // this press is only here to open the drag.
@@ -346,6 +380,10 @@ R"JS(
             bubbles: true, cancelable: true, composed: true, view: window,
             button: 0, buttons: 1, clientX: scrubX(), clientY: scrub.y
         }));
+        // Hold the picture on the frame the drag is pointing at, the same way
+        // the power menu freezes the player - see scrubStep for the seeking.
+        shell('mpv-set-prop', ['pause', 'yes']);
+        scrub.paused = true;
         return true;
     }
 
@@ -358,6 +396,9 @@ R"JS(
         scrub.run++;
         scrub.target = Math.max(0, Math.min(scrub.duration, scrub.target + dir * step));
         var x = scrubX();
+        // The paused frame follows the target, so you are looking at where you
+        // are going the whole way there, not where you set off from.
+        shell('mpv-set-prop', ['time-pos', String(scrub.target)]);
         // Straight at the window, where Slider's own drag listener is: on the
         // slider it would reach React's, which posts a thumbnail request.
         window.dispatchEvent(new MouseEvent('mousemove', {
@@ -380,7 +421,7 @@ R"JS(
         scrub.timer = window.setTimeout(scrubCommit, SEEK_TAP_MS);
     }
 
-    // The one seek of the whole gesture.
+    // The one seek of the whole gesture, and the play that follows it.
     function scrubCommit() {
         if (!scrub) return;
         var s = scrub;
@@ -392,14 +433,22 @@ R"JS(
             clientX: Math.round(s.rect.left + s.rect.width * (s.target / s.duration)),
             clientY: s.y
         }));
+        // Play on from where the drag was left. The mouseup above has already
+        // put the seek there, so this only lifts the freeze - and not at all if
+        // playback was already stopped when the drag began.
+        if (s.paused && !s.wasPaused) shell('mpv-set-prop', ['pause', 'no']);
     }
 
     // Leaving the player takes the slider with it, so there is nothing left to
     // commit to - drop the drag rather than seeking into a view that has gone.
+    // Still lift our own freeze, so a half-finished gesture cannot strand the
+    // next file loading paused.
     function scrubDrop() {
         scrubDuration = 0;
+        seekPrimeCount = 0;
         if (!scrub) return;
         if (scrub.timer) window.clearTimeout(scrub.timer);
+        if (scrub.paused && !scrub.wasPaused) shell('mpv-set-prop', ['pause', 'no']);
         scrub = null;
     }
 
@@ -411,6 +460,21 @@ R"JS(
     }
 
     function playerSeek(dir) {
+        var now = window.performance ? performance.now() : Date.now();
+        if (!scrub) {
+            // A fresh gesture, or a change of direction, starts the count over.
+            if (dir !== seekPrimeDir || now - seekPrimeAt > SEEK_GESTURE_MS) {
+                seekPrimeCount = 0;
+            }
+            seekPrimeDir = dir;
+            seekPrimeAt = now;
+            // First taps: the UI's own seek key, committed and frame-accurate.
+            if (++seekPrimeCount <= SEEK_PRIME_TAPS) {
+                sendKey(dir < 0 ? 'ArrowLeft' : 'ArrowRight');
+                peekSeek();
+                return;
+            }
+        }
         if (!scrub && !scrubStart()) {
             // No seek bar to drive - fall back to the UI's own binding.
             sendKey(dir < 0 ? 'ArrowLeft' : 'ArrowRight');
