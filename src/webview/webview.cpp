@@ -977,9 +977,19 @@ static void SetupWebMessageHandler()
             wil::unique_cotaskmem_string msgRaw;
             args->TryGetWebMessageAsString(&msgRaw);
             if(!msgRaw) return S_OK;
+
+            // Which document sent this. Addon pages share this WebView, so the
+            // handful of events that must not be reachable from one (currently
+            // "power-action") check it. Set before dispatch and cleared after,
+            // so a stale value can never vouch for the next message.
+            wil::unique_cotaskmem_string srcRaw;
+            args->get_Source(&srcRaw);
+            g_lastWebMessageOrigin = srcRaw ? srcRaw.get() : L"";
+
             std::wstring wstr(msgRaw.get());
             std::string str = WStringToUtf8(wstr);
             HandleInboundJSON(str);
+            g_lastWebMessageOrigin.clear();
 
             return S_OK;
         }).Get(),

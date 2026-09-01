@@ -10,6 +10,7 @@
 #include "../utils/crashlog.h"
 #include "../utils/helpers.h"
 #include "../utils/config.h"
+#include "../utils/power.h"
 #include "../mpv/player.h"
 #include "../tray/tray.h"
 #include "../ui/splash.h"
@@ -316,6 +317,17 @@ void HandleEvent(const std::string &ev, std::vector<std::string> &args)
         // rather than in the page so no WebView2 clipboard permission is
         // involved; the console bridge in webview.cpp only asks.
         HandleMpvPasteClipboard();
+    } else if (ev == "power-action") {
+        // Quit / sleep / shut down, from webmods/UI/power-menu.js. Unlike
+        // mpv-command there is no allow-list to fall back on and the blast
+        // radius is the whole machine, so the sender is checked instead: only
+        // the web UI the shell loaded may ask, never an addon page.
+        if (!IsTrustedOrigin(g_lastWebMessageOrigin)) {
+            AppendToCrashLog("[SECURITY]: BLOCKED power-action from " +
+                             WStringToUtf8(g_lastWebMessageOrigin));
+            return;
+        }
+        RunPowerAction(args.empty() ? "" : ToLowerStr(args[0]));
     } else {
         std::cout<<"Unknown event="<<ev<<"\n";
     }

@@ -269,6 +269,7 @@ Controller support can be toggled at any time by `right-clicking` the **tray ico
 | **X** / Square | Search |
 | **Y** / Triangle | Home |
 | **LB** / **RB** | Previous / next section (Home → Discover → Library → Calendar → Addons → Settings) |
+| **LB** + **X** | Power menu — quit, sleep or shut down, now or on a timer |
 | **Start** | Home |
 | **Back / View** | Back |
 | Right Stick | Scroll the current list |
@@ -304,14 +305,17 @@ on the keys too.
 
 | Input | Action |
 | --- | --- |
-| **A** / Cross, **Start** | Play / pause |
+| **A** / Cross, **Start** | Play / pause (activates the highlighted control in nav mode) |
 | D-Pad Left / Right, Left Stick | Seek back / forward |
-| **LT** / **RT** | Hold to rewind / fast forward |
-| **LB** / **RB** | Short seek back / forward |
 | D-Pad Up / Down | Volume |
-| **B** / Circle | Exit the player |
-| **X** / Square | Subtitles menu |
-| **Y** / Triangle | Audio track menu |
+| **LT** / **RT** | Hold to rewind / fast forward |
+| **B** / Circle | Close an open menu, otherwise exit the player |
+| **X** / Square | Nav mode — walk the control bar with the d-pad instead of seeking |
+| **Y** / Triangle | Subtitles menu |
+| **RB** + **A** | Skip intro / outro |
+| **RB** + **X** | Playback speed menu |
+| **RB** + **Y** | Audio track menu |
+| **LB** + **X** | Power menu — quit, sleep or shut down, now or on a timer |
 | **Back / View** | Episode / info drawer |
 | **R3** | Playback speed menu |
 | **L3** | Toggle fullscreen |
@@ -319,6 +323,16 @@ on the keys too.
 > **⏳ Note:** The pad drives the same actions as the keyboard shortcuts the web UI already
 > exposes, so the on-screen player stays in sync — the seek bar, volume indicator and
 > pause icon all update exactly as they do with a mouse.
+
+> **⏩ Note:** Seeking accelerates while a direction is held — a tap is ten seconds, a long
+> hold moves in minutes — and nothing is asked of the player until you stop. The seek bar
+> and the time read-out follow the whole way, and taps in quick succession join the same
+> move, so a long jump is one wait at the end rather than one per press.
+
+> **⏻ Note:** In the power menu, **A** opens the highlighted row for changing and **B**
+> closes it again; while a row is open, Left / Right picks the hours or the minutes and
+> Up / Down sets them. With a keyboard the digits can just be typed — `2` `3` `4` `5` fills
+> in 23h 45m — and with a mouse the wheel works whichever field it is over.
 
 > **🧭 Note:** Arrow keys always *select*, never scroll. Moving toward a card that is
 > off-screen selects that card in one press and scrolls just enough to reveal it, rather

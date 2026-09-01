@@ -1,0 +1,283 @@
+/*
+*   POWER MENU STYLES
+*
+*   The dialog sits over everything, player included, so it carries the same
+*   near-maximum z-index the shell's own on-screen keyboard uses and stays one
+*   below the toast. Colours come from the web UI's variables where they exist,
+*   with the shell's dark panel as the fallback for pages that define none.
+*/
+
+.kai-power-scrim {
+    position: fixed;
+    inset: 0;
+    z-index: 2147483646;
+
+    display: none;
+    align-items: center;
+    justify-content: center;
+
+    background: rgba(0, 0, 0, 0.55);
+    backdrop-filter: blur(0.4rem);
+    font-family: 'Nata Sans', sans-serif;
+}
+
+.kai-power-scrim.show {
+    display: flex;
+}
+
+.kai-power-dialog {
+    display: flex;
+    flex-direction: column;
+    gap: 1.2rem;
+
+    width: min(40rem, 90vw);
+    padding: 2rem 2.2rem;
+    border-radius: 0.8rem;
+
+    color: var(--primary-foreground-color, #ffffff);
+    background: var(--modal-background-color, rgba(12, 10, 36, 0.97));
+    box-shadow: 0 0.6rem 2.4rem rgba(0, 0, 0, 0.6);
+}
+
+.kai-power-header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 1.2rem;
+}
+
+.kai-power-title {
+    font-size: 1.9rem;
+    font-weight: 700;
+    line-height: 1.2;
+}
+
+/* Only shown while a timer is armed — it is the reading that makes "Cancel
+   Timer" mean something. */
+.kai-power-chip {
+    flex: none;
+    padding: 0.35rem 0.9rem;
+    border-radius: 1.2rem;
+
+    font-size: 1.15rem;
+    font-weight: 600;
+    white-space: nowrap;
+
+    color: var(--primary-accent-color, #7b5bf5);
+    background: rgba(123, 91, 245, 0.16);
+    box-shadow: inset 0 0 0 0.1rem rgba(123, 91, 245, 0.5);
+}
+
+.kai-power-message {
+    font-size: 1.3rem;
+    opacity: 0.6;
+    line-height: 1.3;
+    margin-top: -0.4rem;
+}
+
+.kai-power-hidden {
+    display: none;
+}
+
+.kai-power-rows {
+    display: flex;
+    flex-direction: column;
+    gap: 0.8rem;
+}
+
+.kai-power-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1.6rem;
+
+    padding: 0.5rem 0.8rem;
+    border-radius: 0.4rem;
+
+    font-size: 1.35rem;
+    outline: none;
+    user-select: none;
+}
+
+.kai-power-label {
+    opacity: 0.7;
+}
+
+.kai-power-value {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+}
+
+.kai-power-current {
+    text-align: center;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+}
+
+/* Wide enough that cycling between "Quit Stremio" and "Sleep" does not shuffle
+   the arrows around. */
+.kai-power-selector .kai-power-current {
+    min-width: 12rem;
+}
+
+.kai-power-time .kai-power-value {
+    gap: 1.2rem;
+}
+
+/* One half of the "When" value. The row owns the selection; this owns which
+   half of it up/down is pointed at. */
+.kai-power-field {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+
+    padding: 0.3rem 0.5rem;
+    border-radius: 0.4rem;
+
+    /* The wheel works these, so say so. */
+    cursor: ns-resize;
+}
+
+.kai-power-field .kai-power-current {
+    min-width: 2.4rem;
+}
+
+.kai-power-unit {
+    font-size: 1.1rem;
+    opacity: 0.5;
+}
+
+/* The two steppers stack, so the arrows read as "this number goes up and down"
+   rather than as another thing left/right might mean. */
+.kai-power-stepper {
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+    margin-left: 0.2rem;
+}
+
+.kai-power-stepper .kai-power-arrow {
+    padding: 0 0.3rem;
+    font-size: 0.85rem;
+}
+
+.kai-power-arrow {
+    padding: 0 0.5rem;
+    opacity: 0.35;
+    cursor: pointer;
+    font-size: 1.6rem;
+    line-height: 1;
+}
+
+.kai-power-arrow:hover {
+    opacity: 1;
+}
+
+/* Dim until the row is actually open for editing: while browsing, the arrows
+   are a label for what A will do, not a live control. */
+.kai-power-row.editing .kai-power-arrow {
+    opacity: 0.85;
+}
+
+.kai-power-hint {
+    font-size: 1.1rem;
+    text-align: right;
+    opacity: 0.45;
+    margin-top: -0.4rem;
+}
+
+.kai-power-buttons {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.6rem;
+
+    margin-top: 0.6rem;
+}
+
+.kai-power-btn {
+    min-width: 6.5rem;
+    padding: 0.65rem 1.4rem;
+    border-radius: 0.4rem;
+
+    font-size: 1.3rem;
+    font-weight: 600;
+    text-align: center;
+    cursor: pointer;
+    outline: none;
+    user-select: none;
+
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.kai-power-btn:hover {
+    background: rgba(255, 255, 255, 0.16);
+}
+
+/* Kept visually level with the other buttons so the purple selection ring
+   reads against it — a purple fill swallows the ring. */
+.kai-power-btn.kai-power-primary {
+    background: rgba(255, 255, 255, 0.12);
+}
+
+.kai-power-btn.kai-power-primary:hover {
+    background: rgba(255, 255, 255, 0.2);
+}
+
+/* Both the d-pad and the keyboard move the selection programmatically, so this
+   is the only thing that says where it is. */
+.kai-power-row.selected,
+.kai-power-btn.selected {
+    box-shadow: inset 0 0 0 0.15rem var(--primary-accent-color, #7b5bf5);
+    background: rgba(255, 255, 255, 0.12);
+}
+
+/* Browsing rings the row; editing fills it and moves the ring down onto the
+   field the presses are actually reaching. */
+.kai-power-row.editing {
+    background: rgba(123, 91, 245, 0.22);
+    box-shadow: inset 0 0 0 0.15rem var(--primary-accent-color, #7b5bf5),
+                0 0 0 0.1rem rgba(123, 91, 245, 0.35);
+}
+
+.kai-power-row.editing .kai-power-field.active {
+    background: rgba(255, 255, 255, 0.14);
+    box-shadow: inset 0 0 0 0.12rem var(--primary-accent-color, #7b5bf5);
+}
+
+.kai-power-btn.kai-power-primary.selected {
+    background: rgba(255, 255, 255, 0.16);
+    box-shadow: inset 0 0 0 0.15rem var(--primary-accent-color, #7b5bf5);
+}
+
+/*
+*   TOAST
+*   Same placement and shape as the shell's controller toast, so an armed timer
+*   reads as part of the same system.
+*/
+
+.kai-power-toast {
+    position: fixed;
+    left: 50%;
+    bottom: 4rem;
+    transform: translateX(-50%) translateY(1rem);
+    z-index: 2147483647;
+
+    padding: 1rem 2rem;
+    border-radius: 2rem;
+
+    font-family: 'Nata Sans', sans-serif;
+    font-size: 1.5rem;
+    color: #ffffff;
+    background: rgba(12, 10, 36, 0.92);
+    box-shadow: 0 0.4rem 1.6rem rgba(0, 0, 0, 0.5);
+
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s ease-out, transform 0.2s ease-out;
+}
+
+.kai-power-toast.show {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+}

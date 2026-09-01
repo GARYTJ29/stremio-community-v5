@@ -48,6 +48,10 @@ extern std::vector<std::wstring> g_domainWhitelist;
 extern std::string  g_updateUrl;
 extern std::wstring  g_extensionsDetailsUrl;
 extern std::wstring  g_webuiUrl;
+// Source frame URI of the web message currently being handled. Every inbound
+// event arrives on the UI thread through the one WebMessageReceived handler, so
+// a single slot is enough - see the "power-action" origin check in HandleEvent.
+extern std::wstring  g_lastWebMessageOrigin;
 
 // Args
 extern bool g_streamingServer;

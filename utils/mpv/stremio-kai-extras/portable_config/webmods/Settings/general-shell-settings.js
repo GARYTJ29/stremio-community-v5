@@ -24,7 +24,14 @@
   "use strict";
 
   if (window.GeneralShellSettings?.initialized) return;
-  window.GeneralShellSettings = { initialized: true };
+  // findGeneralSection is shared with power-settings.js, which appends to the
+  // same section — the "last untitled section" heuristic below is subtle enough
+  // that a second copy of it would drift. Exported here rather than from init()
+  // so it is available however the load order falls out.
+  window.GeneralShellSettings = {
+    initialized: true,
+    findGeneralSection: () => findGeneralSection(),
+  };
 
   const TARGET_ROUTE = "#/settings";
   const GAMEPAD_MARKER = "kai-gamepad-row";

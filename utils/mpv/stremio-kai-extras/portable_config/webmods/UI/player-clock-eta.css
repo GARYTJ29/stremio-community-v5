@@ -33,3 +33,10 @@
 .player-clock-ends {
     opacity: 0.85;
 }
+
+/* A power-menu sleep timer landing before the video ends replaces "Ends at" in
+   place; the accent tint is what says it is not the ordinary reading. */
+.player-clock-ends.player-clock-stops {
+    opacity: 1;
+    color: var(--tertiary-accent-color, #8a5aff);
+}

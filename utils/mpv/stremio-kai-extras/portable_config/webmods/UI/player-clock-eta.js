@@ -139,11 +139,21 @@
         const remainingSeconds = Math.max(0, duration - currentTime) / speed;
         const endTime = new Date(now.getTime() + remainingSeconds * 1000);
 
+        // A sleep timer armed from the power menu (webmods/UI/power-menu.js) cuts
+        // the session short, so once it lands before the video does it is the
+        // more useful of the two times to show. Looked up lazily because
+        // power-menu.js loads after this file.
+        const stopsAt =
+          window.KaiPowerTimer && window.KaiPowerTimer.stopsAt
+            ? window.KaiPowerTimer.stopsAt()
+            : null;
+        const stopsFirst = stopsAt && stopsAt < endTime;
+
         if (state.endsSpan) {
-          state.endsSpan.textContent = `Ends at ${TimeFormatter.formatTime(
-            endTime,
-            state.use24Hour,
-          )}`;
+          state.endsSpan.textContent = stopsFirst
+            ? `Stops at ${TimeFormatter.formatTime(stopsAt, state.use24Hour)}`
+            : `Ends at ${TimeFormatter.formatTime(endTime, state.use24Hour)}`;
+          state.endsSpan.classList.toggle("player-clock-stops", !!stopsFirst);
           state.endsSpan.style.display = "inline";
         }
         if (state.separatorSpan) {

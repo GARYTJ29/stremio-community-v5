@@ -218,9 +218,13 @@ kbd, .keyboard-shortcut,
     display: block !important;
 }
 
-/* Ensure menu is hidden by default if native styles fail */
+/* Ensure menu is hidden by default if native styles fail.
+   Every injected dropdown has to be listed here: the stock ones only exist in
+   the DOM while they are open, so nothing in the native CSS hides a menu, and a
+   marker class left off this list is a menu that never closes. */
 .option-container-EGlcv.api-selector-movie .menu-container-B6cqK,
 .option-container-EGlcv.api-selector-series .menu-container-B6cqK,
+.option-container-EGlcv.kai-power-setting .menu-container-B6cqK,
 .option-container-EGlcv.kai-mpv-setting .menu-container-B6cqK {
     display: none;
     position: absolute;

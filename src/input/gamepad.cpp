@@ -224,7 +224,7 @@ R"JS((function () {
         return e;
     }
 
-    function peekSeekOnce() {
+    function peekSeekOnce(x) {
         var slider = seekSlider();
         if (!slider) return;
         var r = slider.getBoundingClientRect();
@@ -232,19 +232,15 @@ R"JS((function () {
         armPeekBlocker(slider);
         var init = {
             bubbles: true, cancelable: true, composed: true, view: window,
-            clientX: Math.round(thumbX(slider, r)),
+            clientX: Math.round(typeof x === 'number' ? x : thumbX(slider, r)),
             clientY: Math.round(r.top + r.height / 2)
         };
         slider.dispatchEvent(peekEvent('mouseover', init));
         slider.dispatchEvent(peekEvent('mousemove', init));
     }
 
-    function peekSeek() {
-        // Once now so it tracks a held direction, and again once the seek has
-        // landed and the thumb has actually moved.
-        peekSeekOnce();
-        window.setTimeout(peekSeekOnce, 180);
-
+    // The read-out is a hover, so it has to be taken away again.
+    function armPeekLeave() {
         if (seekPeekTimer) window.clearTimeout(seekPeekTimer);
         seekPeekTimer = window.setTimeout(function () {
             seekPeekTimer = null;
@@ -255,6 +251,173 @@ R"JS((function () {
                 relatedTarget: document.documentElement
             }));
         }, 1800);
+    }
+
+    function peekSeek() {
+        // Once now so it tracks a held direction, and again once the seek has
+        // landed and the thumb has actually moved.
+        peekSeekOnce();
+        window.setTimeout(peekSeekOnce, 180);
+        armPeekLeave();
+    }
+
+)JS",
+R"JS(
+    // --- accel seek --------------------------------------------------------
+    // A tap of left/right is the UI's own ten-second step, but a held direction
+    // is someone travelling, and one press per ten seconds turns crossing an
+    // hour into forty presses with a reload waited out at every one of them.
+    //
+    // So a held direction is driven as one long drag of the UI's own seek bar
+    // instead. Slider registers its window listeners from onMouseDown there and
+    // then; its mousemove only moves the label and the thumb, and the seek is
+    // the single mouseup at the end. That is exactly the shape wanted here - the
+    // target moves as fast as the direction is held, and the player is asked for
+    // it once, when the moving stops - and it keeps the overlay honest, since the
+    // UI is doing its own seeking throughout.
+    //
+    // The step grows with the length of the run, so a nudge is still a nudge.
+    // Ten seconds is the web UI's own default for one press of an arrow.
+    var SEEK_RAMP = [[3, 10], [8, 30], [15, 60]];   // [presses so far, seconds]
+    var SEEK_TOP_STEP = 120;
+    // A release starts this rather than committing, so that a flurry of taps is
+    // one gesture and one seek instead of one reload each.
+    var SEEK_TAP_MS = 350;
+    // Comfortably longer than one repeat interval: this is the net for a release
+    // that never lands (pad unplugged, window blurred mid-hold).
+    var SEEK_IDLE_MS = 900;
+
+    var scrub = null;
+    var scrubDuration = 0;
+
+    function parseClock(text) {
+        var s = String(text || '');
+        var m = s.match(/(\d+):(\d{2}):(\d{2})/) || s.match(/(\d+):(\d{2})/);
+        if (!m) return -1;
+        if (m.length > 3) return (+m[1]) * 3600 + (+m[2]) * 60 + (+m[3]);
+        return (+m[1]) * 60 + (+m[2]);
+    }
+
+    // Where we are and how long the file is, read off the seek bar's own two
+    // labels - there is no <video> element to ask, mpv renders behind the page.
+    // The right-hand one is a button that toggles to remaining time, hence the
+    // sign check.
+    function seekTimes() {
+        var els = document.querySelectorAll('.seek-bar-I7WeY [class*="label-"]');
+        if (els.length < 2) els = document.querySelectorAll('[class*="seek-bar"] [class*="label-"]');
+        if (els.length < 2) return null;
+        var at = parseClock(els[0].textContent);
+        var right = String(els[1].textContent || '').trim();
+        var duration = parseClock(right);
+        if (at < 0 || duration < 0) return null;
+        if (right.charAt(0) === '-') duration += at;
+        if (duration <= 0) return null;
+        return { at: at, duration: duration };
+    }
+
+    function scrubX() {
+        var r = scrub.slider.getBoundingClientRect();
+        if (r.width) scrub.rect = r;
+        r = scrub.rect;
+        return Math.round(r.left + r.width * (scrub.target / scrub.duration));
+    }
+
+    function scrubStart() {
+        var slider = seekSlider();
+        if (!slider) return false;
+        var rect = slider.getBoundingClientRect();
+        if (!rect.width) return false;
+        var times = seekTimes();
+        if (!times) return false;
+        // The length of the file does not change, and for a second and a half
+        // after a seek the left-hand label still reads the target rather than
+        // where playback is - which is the one moment "duration" derived from a
+        // remaining-time label would come out wrong. So it is read once.
+        if (!scrubDuration) scrubDuration = times.duration;
+        scrub = {
+            slider: slider, rect: rect,
+            y: Math.round(rect.top + rect.height / 2),
+            duration: scrubDuration, target: Math.min(times.at, scrubDuration),
+            dir: 0, run: 0, timer: 0
+        };
+        // onSlide fires with the position it is already at, so nothing moves -
+        // this press is only here to open the drag.
+        slider.dispatchEvent(new MouseEvent('mousedown', {
+            bubbles: true, cancelable: true, composed: true, view: window,
+            button: 0, buttons: 1, clientX: scrubX(), clientY: scrub.y
+        }));
+        return true;
+    }
+
+    function scrubStep(dir) {
+        if (scrub.dir !== dir) { scrub.dir = dir; scrub.run = 0; }
+        var step = SEEK_TOP_STEP;
+        for (var i = 0; i < SEEK_RAMP.length; i++) {
+            if (scrub.run < SEEK_RAMP[i][0]) { step = SEEK_RAMP[i][1]; break; }
+        }
+        scrub.run++;
+        scrub.target = Math.max(0, Math.min(scrub.duration, scrub.target + dir * step));
+        var x = scrubX();
+        // Straight at the window, where Slider's own drag listener is: on the
+        // slider it would reach React's, which posts a thumbnail request.
+        window.dispatchEvent(new MouseEvent('mousemove', {
+            bubbles: false, cancelable: true, composed: true, view: window,
+            button: 0, buttons: 1, clientX: x, clientY: scrub.y
+        }));
+        // The bar's own label already reads the target; this adds the chapter
+        // name at the destination, the same as hovering there with a mouse.
+        peekSeekOnce(x);
+        armPeekLeave();
+        if (scrub.timer) window.clearTimeout(scrub.timer);
+        scrub.timer = window.setTimeout(scrubCommit, SEEK_IDLE_MS);
+    }
+
+    // Letting go does not commit outright: another press inside the grace joins
+    // the same gesture, so tapping a few times over still costs one seek.
+    function scrubEnd() {
+        if (!scrub) return;
+        if (scrub.timer) window.clearTimeout(scrub.timer);
+        scrub.timer = window.setTimeout(scrubCommit, SEEK_TAP_MS);
+    }
+
+    // The one seek of the whole gesture.
+    function scrubCommit() {
+        if (!scrub) return;
+        var s = scrub;
+        scrub = null;
+        if (s.timer) window.clearTimeout(s.timer);
+        window.dispatchEvent(new MouseEvent('mouseup', {
+            bubbles: false, cancelable: true, composed: true, view: window,
+            button: 0, buttons: 0,
+            clientX: Math.round(s.rect.left + s.rect.width * (s.target / s.duration)),
+            clientY: s.y
+        }));
+    }
+
+    // Leaving the player takes the slider with it, so there is nothing left to
+    // commit to - drop the drag rather than seeking into a view that has gone.
+    function scrubDrop() {
+        scrubDuration = 0;
+        if (!scrub) return;
+        if (scrub.timer) window.clearTimeout(scrub.timer);
+        scrub = null;
+    }
+
+    function seekHeld() {
+        for (var name in SEEK_BUTTONS) {
+            if (held[name] && held[name].down) return true;
+        }
+        return false;
+    }
+
+    function playerSeek(dir) {
+        if (!scrub && !scrubStart()) {
+            // No seek bar to drive - fall back to the UI's own binding.
+            sendKey(dir < 0 ? 'ArrowLeft' : 'ArrowRight');
+            peekSeek();
+            return;
+        }
+        scrubStep(dir);
     }
 
     // --- focus -------------------------------------------------------------
@@ -424,6 +587,10 @@ R"JS(
     // presses arrive here too, dispatched as ordinary arrow keydowns.
     function onArrowKey(e) {
         if (!CFG.arrowNavigation || e.defaultPrevented) return;
+        // This listener is registered at document-created, ahead of the webmods',
+        // so without this the spatial move would happen before the power dialog's
+        // own capture handler ever saw the key.
+        if (window.__kaiPowerMenu && window.__kaiPowerMenu.isOpen()) return;
         if (e.ctrlKey || e.altKey || e.metaKey) return;
         var dir = DIRECTIONS[e.key] || DIRECTIONS[e.code];
         if (!dir) return;
@@ -1016,9 +1183,10 @@ R"JS(
     // UI disables its own seek and volume shortcuts while a menu is open anyway.)
     function playerArrow(dir) {
         if (navMode || playerMenu()) { navMove(dir); return; }
+        // Left/right are the seek bindings, and seeking is a drag of the bar
+        // rather than a keypress - see playerSeek.
+        if (dir === 'left' || dir === 'right') { playerSeek(dir === 'left' ? -1 : 1); return; }
         sendKey(ARROWS[dir]);
-        // Left/right are the seek bindings - show what we just seeked to.
-        if (dir === 'left' || dir === 'right') peekSeek();
     }
 
     // The player's Escape shortcut closes its menus *and* navigates back in the
@@ -1058,6 +1226,9 @@ R"JS(
     var BUTTONS = ['A', 'B', 'X', 'Y', 'LB', 'RB', 'LT', 'RT', 'BACK', 'START',
                    'L3', 'R3', 'UP', 'DOWN', 'LEFT', 'RIGHT', 'GUIDE'];
     var REPEATABLE = { UP: 1, DOWN: 1, LEFT: 1, RIGHT: 1, LT: 1, RT: 1 };
+    // The four that seek in the player, and which way. Held together they are one
+    // gesture, so the drag is only committed once the last of them is let go.
+    var SEEK_BUTTONS = { LEFT: -1, RIGHT: 1, LT: -1, RT: 1 };
     // Only while the on-screen keyboard is up, where these are backspace and the
     // caret keys - holding them down is the whole point.
     var OSK_REPEATABLE = { X: 1, LB: 1, RB: 1 };
@@ -1070,6 +1241,11 @@ R"JS(
     // Read fresh each tick from that frame's raw pad state (not the `held` map, which
     // is written by BUTTONS-array order and would race a same-frame RB+A press).
     var rbHeld = false;
+    var lbHeld = false;
+    // LB outside the player cycles tabs, but it is also half of LB+X (power menu),
+    // and the cycle would fire on the way into the combo. So the press only arms
+    // this; the release spends it, unless the combo cleared it first.
+    var lbPending = false;
     // X toggles this in-player: while on, the d-pad walks the control bar (play,
     // mute, speed, cast, subtitles, audio...) instead of driving seek and volume.
     var navMode = false;
@@ -1128,6 +1304,18 @@ R"JS(
 
     // --- bindings ----------------------------------------------------------
     function act(name, now) {
+        // Every press counts as activity, whoever ends up handling it - the idle
+        // watchdog in the power-menu webmod needs the ones that never become key
+        // events (nav-mode moves, script-messages) as much as the ones that do.
+        try { window.dispatchEvent(new CustomEvent('kai-input-activity')); } catch (e) {}
+        // Anything that is not another seek ends a running one: the pending
+        // position is spent before whatever was pressed gets to act on it.
+        if (scrub && !SEEK_BUTTONS[name]) scrubCommit();
+        // The power dialog takes the pad over the same way the keyboard does,
+        // and for the same reason: in the player A is play/pause and the d-pad is
+        // seek, neither of which should reach past an open dialog.
+        if (window.__kaiPowerMenu && window.__kaiPowerMenu.isOpen() &&
+            window.__kaiPowerMenu.pad(name)) return;
         // The on-screen keyboard takes the pad over while it is up, bar the few
         // presses it has no use for.
         if (oskOpen && oskButton(name)) return;
@@ -1183,6 +1371,13 @@ R"JS(
             else window.history.back();
             break;
         case 'X':
+            if (lbHeld) {
+                // LB+X: power menu, in the player and out of it alike. Spending
+                // the pending LB here is what stops the tab cycling underneath.
+                lbPending = false;
+                if (window.__kaiPowerMenu) window.__kaiPowerMenu.open();
+                break;
+            }
             if (player) {
                 if (rbHeld) {
                     sendKey('KeyR');                    // RB+X: playback speed menu
@@ -1202,7 +1397,10 @@ R"JS(
             } else goto('#/');
             break;
         case 'LB':
-            if (!player) cycleTab(-1);                 // reserved in-player (no seek)
+            // Armed here, spent on release (see handleButton) so LB+X does not
+            // change tabs on its way to opening the power menu. LB is not
+            // repeatable, so this is exactly one cycle per tap either way.
+            if (!player) lbPending = true;             // reserved in-player (no seek)
             break;
         case 'RB':
             // In-player, RB is only a modifier for RB+A (skip), RB+Y (audio), and
@@ -1211,10 +1409,10 @@ R"JS(
             if (!player) cycleTab(1);
             break;
         case 'LT':
-            if (player) sendKey('ArrowLeft');          // held = rewind
+            if (player) playerSeek(-1);                // held = rewind
             break;
         case 'RT':
-            if (player) sendKey('ArrowRight');         // held = fast forward
+            if (player) playerSeek(1);                 // held = fast forward
             break;
         case 'START':
             if (player) sendKey('Space');
@@ -1250,6 +1448,12 @@ R"JS(
             }
         } else if (s.down) {
             s.down = false;
+            // LB's tab cycle lands here rather than on the press, so that LB+X
+            // can cancel it. Nothing else defers.
+            if (name === 'LB' && lbPending) { lbPending = false; cycleTab(-1); }
+            // Letting go of the last seek direction is what asks the player for
+            // the position the drag has been building up.
+            if (SEEK_BUTTONS[name] && scrub && !seekHeld()) scrubEnd();
         }
     }
 
@@ -1277,7 +1481,7 @@ R"JS(
         var root = document.documentElement;
         if (root && root.classList) root.classList.toggle(ACTIVE_CLASS, on);
         if (on) toast('Controller connected');
-        else oskHide(false);        // nothing left to drive it with
+        else { lbPending = false; oskHide(false); }  // nothing left to drive it with
         // Lets notify_skip.lua swap its skip-button hint between "Press Tab" and
         // "RB+A" depending on whether a pad is actually driving the player.
         shell('mpv-command', ['script-message-to', 'notify_skip', 'gamepad-active', on ? 'true' : 'false']);
@@ -1299,6 +1503,7 @@ R"JS(
         var now = window.performance ? performance.now() : Date.now();
         var state = readPad(pad);
         rbHeld = !!state.RB;
+        lbHeld = !!state.LB;
         for (var i = 0; i < BUTTONS.length; i++) {
             handleButton(BUTTONS[i], !!state[BUTTONS[i]], now);
         }
@@ -1323,6 +1528,7 @@ R"JS(
         padIndex = -1;
         held = {};
         navMode = false;
+        lbPending = false;
         oskHide(false);
     });
 
@@ -1332,6 +1538,7 @@ R"JS(
         playerEl = null;
         scrollCache = { el: null, at: 0 };
         navMode = false;
+        scrubDrop();
         oskHide(false);
         restartRepeats();
         if (!active || inPlayer()) return;

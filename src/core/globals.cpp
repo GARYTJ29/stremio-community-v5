@@ -19,6 +19,7 @@ std::vector<std::wstring> g_domainWhitelist;
 std::string  g_updateUrl= "https://raw.githubusercontent.com/Zaarrg/stremio-desktop-v5/refs/heads/webview-windows/version/version.json";
 std::wstring  g_extensionsDetailsUrl= L"https://raw.githubusercontent.com/Zaarrg/stremio-desktop-v5/refs/heads/webview-windows/extensions/extensions.json";
 std::wstring  g_webuiUrl;
+std::wstring  g_lastWebMessageOrigin;
 
 // Command-line args
 bool g_streamingServer      = true;

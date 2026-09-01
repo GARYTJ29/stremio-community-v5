@@ -48,6 +48,21 @@ because of GitHub's file size limits:
 
 (The x86 copy under `deps/libmpv/i686` already ships unpacked.)
 
+**Also unpack the Anime4K shaders.** `utils/mpv/anime4k/anime4k-High-end.zip` is
+vendored, but the extracted `utils/mpv/anime4k/portable_config/shaders/` folder it
+produces is git-ignored, so a fresh clone doesn't have it. `deploy_windows.js` copies
+`portable_config/` into the build *as-is* and skips `.zip`/`.7z` files, so without this
+step the shipped app has no Anime4K shaders:
+
+```cmd
+7z x utils\mpv\anime4k\anime4k-High-end.zip -outils\mpv\anime4k\portable_config -y
+```
+
+> `node build\build_anime4k.js` does the same thing but re-downloads the current
+> High-end shader pack from the latest `bloc97/Anime4K` release (and comments out the
+> `glsl-shaders=` lines in the extracted `mpv.conf`). Use it to refresh the vendored
+> zip; for a plain build, extracting the vendored copy above is enough.
+
 ## 3. vcpkg
 
 ```cmd
@@ -400,3 +415,4 @@ line and just delete `build\Release` (or `build\Debug`) plus `dist\`.
 | Stray CMake output cluttering `build/` | not documented | see step 11 — clean only the generated files, never the whole folder |
 | `dist\win-x64` disappearing after build | not documented | likely AV quarantine — see the note in step 10 |
 | SVP frame interpolation deps not vendored | not documented | copy into `deps/vapoursynth/` yourself (step 9); build/runtime both degrade gracefully without it |
+| Anime4K shaders ship zipped, extract folder is git-ignored | not documented | unpack `anime4k-High-end.zip` into `portable_config/` before building (step 2) |

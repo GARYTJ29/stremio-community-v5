@@ -43,6 +43,8 @@ set(SOURCES
         src/utils/helpers.cpp
         src/utils/config.h
         src/utils/config.cpp
+        src/utils/power.h
+        src/utils/power.cpp
         src/utils/crashlog.h
         src/utils/crashlog.cpp
         src/mpv/player.h
@@ -81,6 +83,8 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
         Msimg32.lib
         winhttp.lib
         shlwapi.lib
+        PowrProf.lib
+        Advapi32.lib
         nlohmann_json::nlohmann_json
         unofficial::webview2::webview2
         OpenSSL::SSL
