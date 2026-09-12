@@ -1,5 +1,6 @@
 #include "mainwindow.h"
 
+#include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <windowsx.h>
@@ -166,6 +167,33 @@ void SendShellSettings()
     SendToJS("shell-settings", j);
 }
 
+// `rel` is a path relative to portable_config. Anything that would resolve
+// outside it (absolute, drive-relative, or climbing out with "..") is dropped.
+static void OpenConfigPath(const std::wstring &rel)
+{
+    namespace fs = std::filesystem;
+    try {
+        const fs::path relPath(rel);
+        if (relPath.empty() || relPath.has_root_name() || relPath.has_root_directory()) return;
+
+        const fs::path base = fs::weakly_canonical(fs::path(GetExeDirectory()) / L"portable_config");
+        const fs::path target = fs::weakly_canonical(base / relPath);
+
+        const std::wstring baseStr = base.wstring() + L"\\";
+        const std::wstring targetStr = target.wstring();
+        if (targetStr.compare(0, baseStr.size(), baseStr) != 0) return;
+
+        const std::wstring quoted = L"\"" + targetStr + L"\"";
+        if (fs::is_directory(target)) {
+            ShellExecuteW(nullptr, L"open", L"explorer.exe", quoted.c_str(), nullptr, SW_SHOWNORMAL);
+        } else if (fs::is_regular_file(target)) {
+            ShellExecuteW(nullptr, L"open", L"notepad.exe", quoted.c_str(), nullptr, SW_SHOWNORMAL);
+        }
+    } catch (const std::exception &e) {
+        AppendToCrashLog(std::string("[open-config-path] ") + e.what());
+    }
+}
+
 void HandleEvent(const std::string &ev, std::vector<std::string> &args)
 {
     if(ev=="mpv-command"){
@@ -329,6 +357,19 @@ void HandleEvent(const std::string &ev, std::vector<std::string> &args)
             return;
         }
         RunPowerAction(args.empty() ? "" : ToLowerStr(args[0]));
+    } else if (ev == "open-config-path") {
+        // Opens a user-editable file (Notepad) or folder (Explorer) under
+        // portable_config, from the settings webmods. Same origin check as
+        // power-action, and the path is pinned inside portable_config so a
+        // page can never point this at anything else. Notepad rather than the
+        // default handler: for a .js config that would be Script Host.
+        if (!IsTrustedOrigin(g_lastWebMessageOrigin)) {
+            AppendToCrashLog("[SECURITY]: BLOCKED open-config-path from " +
+                             WStringToUtf8(g_lastWebMessageOrigin));
+            return;
+        }
+        if (args.empty() || args[0].empty()) return;
+        OpenConfigPath(Utf8ToWstring(args[0]));
     } else {
         std::cout<<"Unknown event="<<ev<<"\n";
     }

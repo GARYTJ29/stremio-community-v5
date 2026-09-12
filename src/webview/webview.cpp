@@ -1167,6 +1167,9 @@ static void InjectShellSettings()
     j["initialVolume"]  = g_settings.initialVolume;
     j["maxVolume"]      = g_settings.maxVolume;
     j["gamepadEnabled"] = g_gamepadEnabled;
+    // Lets the settings webmods show where their config files live; the page
+    // has no other way to learn the exe's location.
+    j["portableConfigDir"] = WStringToUtf8(GetExeDirectory() + L"\\portable_config");
 
     const std::wstring script =
         L"window.__shellSettings = " + Utf8ToWstring(j.dump()) + L";";
@@ -1180,13 +1183,7 @@ static void SetupWebMods()
     // Registered first so it wins the document-created ordering.
     InjectShellSettings();
 
-    wchar_t buf[MAX_PATH];
-    GetModuleFileNameW(nullptr, buf, MAX_PATH);
-    std::wstring exeDir = buf;
-    size_t pos = exeDir.find_last_of(L"\\/");
-    if (pos != std::wstring::npos) exeDir.erase(pos);
-
-    const std::filesystem::path root = std::filesystem::path(exeDir) / L"portable_config" / L"webmods";
+    const std::filesystem::path root = std::filesystem::path(GetExeDirectory()) / L"portable_config" / L"webmods";
     if (!std::filesystem::exists(root) || !std::filesystem::is_directory(root)) {
         std::wcout << L"[WEBMODS] Folder not found: " << root.wstring() << std::endl;
         return;
