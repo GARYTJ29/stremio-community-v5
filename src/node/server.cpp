@@ -19,6 +19,7 @@ static void NodeOutputThreadProc()
         if(!ok || readSz==0) break;
         buf[readSz]='\0';
         std::cout<<"[node] "<<buf;
+        if (g_logNodeOutput) AppendToCrashLog(std::string("[NODE]: ") + buf);
     }
     std::cout<<"NodeOutputThreadProc done.\n";
 }

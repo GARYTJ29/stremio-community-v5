@@ -88,6 +88,7 @@ void LoadSettings()
     g_pauseOnMinimize = (GetPrivateProfileIntW(L"General", L"PauseOnMinimize", 1, iniPath.c_str()) == 1);
     g_pauseOnLostFocus = (GetPrivateProfileIntW(L"General", L"PauseOnLostFocus", 0, iniPath.c_str()) == 1);
     g_settings.discordRpc = (GetPrivateProfileIntW(L"General", L"DiscordRPC", 1, iniPath.c_str()) == 1);
+    g_logNodeOutput = (GetPrivateProfileIntW(L"General", L"LogNodeOutput", 0, iniPath.c_str()) == 1);
 
     // Controller
     g_gamepadEnabled     = (GetPrivateProfileIntW(L"Controller", L"Enabled", 1, iniPath.c_str()) == 1);

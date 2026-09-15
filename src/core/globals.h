@@ -122,6 +122,7 @@ extern HWND            g_trayHwnd;
 extern bool g_pauseOnMinimize;
 extern bool g_pauseOnLostFocus;
 extern bool g_allowZoom;
+extern bool g_logNodeOutput; // [General] LogNodeOutput -- persist Node server's stdout/stderr into errors-*.txt
 
 // Controller (gamepad) support
 extern bool g_gamepadEnabled;
