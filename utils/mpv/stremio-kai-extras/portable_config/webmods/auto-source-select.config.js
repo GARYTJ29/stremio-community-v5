@@ -41,8 +41,24 @@ window.__autoSourceSelectConfig = {
   // quality matter, and so on. Reorder to taste, e.g.
   //   ["size", "quality", "addon", "language"]
   // means "within the ideal size first, then best quality, then best addon".
-  // Valid entries: "addon", "quality", "language", "size".
-  priority: ["addon", "quality", "language", "size"],
+  // Valid entries: "episode", "addon", "quality", "language", "size".
+  priority: ["addon", "quality", "language", "episode", "size"],
+
+  // ── Episode name ──────────────────────────────────────────────────────────
+  // Some shows are numbered one way by Stremio's guide and another by release
+  // groups. Futurama: Stremio's S10E4 is "Forty Percent Leadbelly", but most
+  // releases tagged S10E04 are "The Numberland Gap" - a different episode.
+  // With this on, a stream whose title or file name contains the episode name
+  // shown at the top of the streams list ranks above one that does not. It is
+  // a preference, not a filter: when no stream names the episode the pick
+  // falls back to the rest. Its weight is the position of "episode" in
+  // `priority` - by default it only breaks ties between streams of the same
+  // addon, quality and language; move it first to make it outrank everything.
+  // Matching ignores case and punctuation ("Forty.Percent.Leadbelly" matches)
+  // and a leading "The". Movies, and generic names like "Episode 4", are
+  // unaffected. Note a bare "Futurama S10E04" cannot be told from a wrong one,
+  // so it ranks with the wrong ones.
+  matchEpisodeName: true,
 
   // ── Addons ────────────────────────────────────────────────────────────────
   // Only streams matching one of these entries are ever picked; position is the
@@ -115,6 +131,7 @@ window.__autoSourceSelectConfig = {
   //   quality:    ["4K", "1080p", ...]     tiers
   //   languages:  ["Malayalam", ...]       names from `languages`
   //   minSizeGB / maxSizeGB / minSeeders:  numbers
+  //   episodeName: true                    only streams naming the episode
   //   match:      /regex/i                 against the release title
   //   priority:   [...]                    overrides the global order inside this rule
   //

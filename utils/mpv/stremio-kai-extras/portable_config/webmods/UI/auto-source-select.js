@@ -35,7 +35,8 @@
     settleSeconds: 1.5,
     idleSeconds: 5,
     countdownSeconds: 5,
-    priority: ["addon", "quality", "language", "size"],
+    priority: ["addon", "quality", "language", "episode", "size"],
+    matchEpisodeName: true,
     addons: [
       { name: "Torrentio TB+", addon: /^Torrentio TB$/i, match: /^\[TB\+\]\s*Torrentio/i },
       { name: "Torrentio AD+", addon: /^Torrentio AD$/i, match: /^\[AD\+\]\s*Torrentio/i },
@@ -166,6 +167,17 @@
     };
   }
 
+  // The streams list header names the selected video as "S10E4 Forty Percent
+  // Leadbelly". Movies have no header; generic names ("Episode 4") carry no
+  // information and are ignored.
+  function episodeNameFromDom() {
+    const el = document.querySelector('[class*="streams-list"] [class*="episode-title"]');
+    if (!el) return null;
+    const name = el.textContent.replace(/^\s*S\d+\s*E\d+\s*/i, "").trim();
+    if (!name || /^(episode|ep\.?|part)\s*\d+$/i.test(name)) return null;
+    return name;
+  }
+
   // ───────────────────────────────────────────────────────────────────────────
   // PARSING
   // ───────────────────────────────────────────────────────────────────────────
@@ -223,6 +235,9 @@
       qualityLine: nameLines[1] || "",
       title,
       meta,
+      // Season packs put the episode's file name on the second line, so the
+      // episode-name check reads the whole description.
+      desc: descLines.join(" "),
       sizeGB: parseSizeGB(meta),
       seeders: seeders ? parseInt(seeders[1], 10) : 0,
       flags: Array.from(meta.matchAll(FLAG_RE), (m) => m[0]),
@@ -272,6 +287,32 @@
     return cfg.languages.length;
   }
 
+  // "Forty.Percent.Leadbelly", "Forty_Percent_Leadbelly" and "forty percent
+  // leadbelly" all reduce to the same word sequence. Release names write
+  // "Fry & Leela's" as "Fry.and.Leelas".
+  function normalizeWords(s) {
+    return (s || "")
+      .toLowerCase()
+      .replace(/&/g, " and ")
+      .replace(/['’`]/g, "")
+      .replace(/[^\p{L}\p{N}]+/gu, " ")
+      .trim();
+  }
+
+  // 0 = the release names this episode, 1 = it does not (or names no episode at
+  // all - a bare "S10E04" cannot be told apart from a wrong one).
+  function episodeRank(episodeName, row) {
+    if (!episodeName) return 0;
+    const hay = " " + normalizeWords(row.desc) + " ";
+    const name = normalizeWords(episodeName);
+    if (name.length < 3) return 0;
+    if (hay.includes(" " + name + " ")) return 0;
+    // Release groups drop leading articles: "Numberland Gap" for "The Numberland Gap".
+    const bare = name.replace(/^(the|a|an) /, "");
+    if (bare !== name && bare.length >= 3 && hay.includes(" " + bare + " ")) return 0;
+    return 1;
+  }
+
   function qualityRank(cfg, tier) {
     const i = cfg.quality.findIndex((q) => String(q).toLowerCase() === tier.toLowerCase());
     return i >= 0 ? i : cfg.quality.length;
@@ -293,7 +334,7 @@
     });
   }
 
-  function score(cfg, type, row) {
+  function score(cfg, type, row, episodeName) {
     const addonRank = matchAddon(cfg, row);
     const langRank = matchLanguage(cfg, row);
     const size = sizeInfo(cfg, type, row.sizeGB);
@@ -305,10 +346,12 @@
       language: cfg.languages[langRank] ? cfg.languages[langRank].name : null,
       sizeRank: size.rank,
       sizeDist: size.dist,
+      episodeRank: episodeRank(episodeName, row),
     });
   }
 
   const RANK_FIELD = {
+    episode: "episodeRank",
     addon: "addonRank",
     quality: "qualityRank",
     language: "langRank",
@@ -342,6 +385,7 @@
     if (typeof rule.minSizeGB === "number" && !(c.sizeGB != null && c.sizeGB >= rule.minSizeGB)) return false;
     if (typeof rule.maxSizeGB === "number" && !(c.sizeGB != null && c.sizeGB <= rule.maxSizeGB)) return false;
     if (typeof rule.minSeeders === "number" && c.seeders < rule.minSeeders) return false;
+    if (rule.episodeName === true && c.episodeRank !== 0) return false;
     if (rule.match) {
       const re = toRegex(rule.match);
       if (re && !re.test(c.title)) return false;
@@ -352,8 +396,9 @@
   function rank(cfg, type, rows) {
     const rejected = [];
     const pool = [];
+    const episodeName = cfg.matchEpisodeName === false ? null : episodeNameFromDom();
     rows.forEach((a, i) => {
-      const row = score(cfg, type, parseRow(a, i));
+      const row = score(cfg, type, parseRow(a, i), episodeName);
       let why = null;
       if (row.hidden) why = "hidden by filter";
       else if (row.addonRank < 0) why = "addon not configured";
@@ -375,14 +420,15 @@
         break;
       }
     }
-    return { pick: ranked[0] || null, ranked, pool, rejected, ruleIndex };
+    return { pick: ranked[0] || null, ranked, pool, rejected, ruleIndex, episodeName };
   }
 
-  function describe(c) {
+  function describe(c, episodeName) {
     const bits = [c.addonName || c.nameLine, c.quality];
     if (c.sizeGB != null) bits.push(c.sizeGB >= 1 ? c.sizeGB.toFixed(2) + " GB" : Math.round(c.sizeGB * 1024) + " MB");
     if (c.flags.length) bits.push(c.flags.join(" "));
     if (c.language && c.language !== "Rest") bits.push(c.language);
+    if (episodeName) bits.push(c.episodeRank === 0 ? "✓ episode name" : "? episode name");
     return bits.join(" · ");
   }
 
@@ -390,6 +436,7 @@
     const cols = (c) => ({
       pick: describe(c),
       title: c.title,
+      episode: c.episodeRank,
       addon: c.addonRank,
       quality: c.qualityRank,
       lang: c.langRank,
@@ -397,6 +444,7 @@
       dist: c.sizeDist === Infinity ? "?" : +c.sizeDist.toFixed(2),
       seeders: c.seeders,
     });
+    if (result.episodeName) log('episode name: "' + result.episodeName + '"');
     if (result.ruleIndex >= 0) log("preferFirst rule #" + result.ruleIndex + " matched");
     log("ranked " + result.ranked.length + " / pool " + result.pool.length + " / rejected " + result.rejected.length);
     if (console.table) console.table(result.ranked.slice(0, 15).map(cols));
@@ -478,7 +526,7 @@
     else window.location.href = pick.href;
   }
 
-  function showCountdown(session, pick, cfg) {
+  function showCountdown(session, pick, cfg, episodeName) {
     const seconds = Math.max(0, Number(cfg.countdownSeconds) || 0);
     const el = baseToast("pick");
     el.innerHTML =
@@ -487,7 +535,7 @@
       '<div class="kai-ass-meta"></div>' +
       '<div class="kai-ass-name"></div>' +
       '<div class="kai-ass-buttons"></div>';
-    el.querySelector(".kai-ass-meta").textContent = describe(pick);
+    el.querySelector(".kai-ass-meta").textContent = describe(pick, episodeName);
     el.querySelector(".kai-ass-name").textContent = pick.title;
     el.querySelector(".kai-ass-name").title = pick.title;
     const count = el.querySelector(".kai-ass-count");
@@ -638,7 +686,7 @@
       infoToast("no stream matched your config", 3000);
       return;
     }
-    showCountdown(s, result.pick, cfg);
+    showCountdown(s, result.pick, cfg, result.episodeName);
   }
 
   // ───────────────────────────────────────────────────────────────────────────
@@ -678,7 +726,7 @@
         ", rows: " + state.rows.length + ", all answered: " + state.allAnswered +
         (state.loadingText ? " (" + state.loadingText + ")" : ""));
     logRanking(result);
-    if (result.pick) log("would pick:", describe(result.pick), "-", result.pick.title);
+    if (result.pick) log("would pick:", describe(result.pick, result.episodeName), "-", result.pick.title);
     if (result.rejected.length && console.table) {
       log("rejected:");
       console.table(result.rejected.slice(0, 30).map((c) => ({ why: c.rejected, row: c.nameLine, title: c.title })));
