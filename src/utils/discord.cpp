@@ -136,6 +136,54 @@ static void SetDiscordDiscoverPresence(const char *const details, const char *co
     Discord_UpdatePresence(&discordPresence);
 }
 
+// The official web bundle drives Discord itself, sending a ready-made activity
+// object - {state, details, image, startTimestamp, endTimestamp} - instead of
+// the fork's positional "activity" args. Timestamps arrive as epoch seconds and
+// any field but `state` may be null.
+void SetDiscordActivityFromJson(const std::string& payload) {
+    if (!g_settings.discordRpc) return;
+
+    nlohmann::json j;
+    try {
+        j = nlohmann::json::parse(payload);
+    } catch (const std::exception& e) {
+        std::cout << "[DISCORD]: Bad activity payload: " << e.what() << "\n";
+        return;
+    }
+    if (!j.is_object()) return;
+
+    auto str = [&](const char* key) -> std::string {
+        return (j.contains(key) && j[key].is_string()) ? j[key].get<std::string>() : std::string();
+    };
+    auto stamp = [&](const char* key) -> int64_t {
+        return (j.contains(key) && j[key].is_number()) ? j[key].get<int64_t>() : 0;
+    };
+
+    // DiscordRichPresence only stores borrowed pointers, so these have to
+    // outlive the Discord_UpdatePresence() call.
+    const std::string state   = str("state");
+    const std::string details = str("details");
+    const std::string image   = str("image");
+
+    DiscordRichPresence discordPresence{};
+    memset(&discordPresence, 0, sizeof(discordPresence));
+    discordPresence.type = DISCORD_ACTIVITY_TYPE_WATCHING;
+    if (!state.empty())   discordPresence.state   = state.c_str();
+    if (!details.empty()) discordPresence.details = details.c_str();
+    if (!image.empty()) {
+        discordPresence.largeImageKey = image.c_str();
+        discordPresence.largeImageText = details.empty() ? "Stremio" : details.c_str();
+    }
+    discordPresence.startTimestamp = stamp("startTimestamp");
+    discordPresence.endTimestamp   = stamp("endTimestamp");
+
+    Discord_UpdatePresence(&discordPresence);
+}
+
+void ClearDiscordActivity() {
+    Discord_ClearPresence();
+}
+
 void SetDiscordPresenceFromArgs(const std::vector<std::string>& args) {
     if (!g_settings.discordRpc || args.empty()) {
         return;

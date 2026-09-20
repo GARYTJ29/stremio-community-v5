@@ -210,6 +210,7 @@
         - 😴 ``PauseOnMinimize`` Pause playback on window minimize
         - 👀 ``PauseOnLostFocus`` Pause playback on window loses focus
         - 🔍 ``AllowZoom`` Allow zoom via `pinch action` or ``CTRL+Scroll``
+        - 🌐 ``WebUIUrl`` Web UI the shell loads (default `https://web.stremio.com/`, falling back to `https://stremio.zarg.me/`). Accepts a comma-separated list, tried in order until one is reachable. `--webui-url=` on the command line takes precedence.
         - 🎮 ``[Controller] Enabled`` Turn controller support on or off
         - 🎮 ``[Controller] Vibration`` Short rumble when a pad connects
         - 🎮 ``[Controller] FocusRing`` Draw a high-visibility outline around the focused item while a pad is connected
@@ -227,10 +228,10 @@
             * The **portable version** includes its own WebView2 runtime and does **not** require system installation.
             * If a WebView-related error appears, install WebView2 or use the portable build.
         * 🌎 **Unreachable Web UI**
-          The app loads the UI in the following order:
-            1. [https://stremio.zarg.me/](https://stremio.zarg.me/)
-            2. [https://zaarrg.github.io/stremio-web-shell-fixes/](https://zaarrg.github.io/stremio-web-shell-fixes/)
-            3. [https://web.stremio.com/](https://web.stremio.com/)
+          The app loads the UI in the order set by ``[General] WebUIUrl`` in ``stremio-settings.ini``, defaulting to:
+            1. [https://web.stremio.com/](https://web.stremio.com/)
+            2. [https://stremio.zarg.me/](https://stremio.zarg.me/)
+            * The shell speaks both UI protocols: the official bundle's `chrome.webview` handshake and the `stremio-web-shell-fixes` fork's older `window.initShellComm` one. Either URL works.
             * If the UI appears stuck, press **F5** to reload.
             * If the cached UI is outdated, use **Ctrl+F5** to clear cache and reload.
         * ⚙️ **Invalid MPV configuration**

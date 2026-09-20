@@ -74,6 +74,38 @@ static void LoadMergedAllowlist(const std::wstring& iniPath,
 }
 
 
+// [General] WebUIUrl: one URL, or several comma-separated ones tried in order.
+// Written back when absent so the key is visible in a fresh .ini.
+static void LoadWebUIUrls(const std::wstring& iniPath)
+{
+    std::vector<wchar_t> buf(4096);
+    GetPrivateProfileStringW(L"General", L"WebUIUrl", L"", buf.data(),
+                             (DWORD)buf.size(), iniPath.c_str());
+    std::wstring configured = buf.data();
+
+    std::vector<std::wstring> urls;
+    std::wstringstream ss(configured);
+    std::wstring tok;
+    while (std::getline(ss, tok, L',')) {
+        size_t a = tok.find_first_not_of(L" \t\r\n");
+        size_t b = tok.find_last_not_of(L" \t\r\n");
+        if (a == std::wstring::npos) continue;
+        urls.push_back(tok.substr(a, b - a + 1));
+    }
+
+    if (urls.empty()) {
+        urls.push_back(kDefaultWebUIUrl);
+        WritePrivateProfileStringW(L"General", L"WebUIUrl", kDefaultWebUIUrl, iniPath.c_str());
+    }
+
+    // --webui-url= wins, but the .ini entries stay on as fallbacks.
+    if (!g_webuiUrlOverride.empty() &&
+        std::find(urls.begin(), urls.end(), g_webuiUrlOverride) == urls.end())
+        urls.insert(urls.begin(), g_webuiUrlOverride);
+
+    g_webuiUrls = urls;
+}
+
 void LoadSettings()
 {
     std::wstring iniPath = GetIniPath();
@@ -89,6 +121,7 @@ void LoadSettings()
     g_pauseOnLostFocus = (GetPrivateProfileIntW(L"General", L"PauseOnLostFocus", 0, iniPath.c_str()) == 1);
     g_settings.discordRpc = (GetPrivateProfileIntW(L"General", L"DiscordRPC", 1, iniPath.c_str()) == 1);
     g_logNodeOutput = (GetPrivateProfileIntW(L"General", L"LogNodeOutput", 0, iniPath.c_str()) == 1);
+    LoadWebUIUrls(iniPath);
 
     // Controller
     g_gamepadEnabled     = (GetPrivateProfileIntW(L"Controller", L"Enabled", 1, iniPath.c_str()) == 1);
@@ -127,7 +160,9 @@ void LoadSettings()
         L"pause,time-pos,speed,mute,volume,aid,sid,no-sub-ass,vo,osc,"
         L"input-default-bindings,input-vo-keyboard,sub-scale,sub-pos,sub-delay,"
         L"sub-color,sub-back-color,sub-border-color,hwdec,hwdec-codecs,"
-        L"subs-with-matching-audio,subs-match-os-language,subs-fallback,subs-fallback-forced";
+        L"subs-with-matching-audio,subs-match-os-language,subs-fallback,subs-fallback-forced,"
+        // Only the official web bundle sets these three.
+        L"keepaspect,panscan,sub-ass-override";
 
     LoadMergedAllowlist(iniPath, L"MpvCommandAllowlist", kDefCmds,  g_mpvCommandAllowlist);
     LoadMergedAllowlist(iniPath, L"MpvSetPropAllowlist", kDefProps, g_mpvSetPropAllowlist);

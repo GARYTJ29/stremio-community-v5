@@ -44,6 +44,9 @@ extern HANDLE    g_hMutex;
 extern HHOOK     g_hMouseHook;
 
 extern std::vector<std::wstring> g_webuiUrls;
+// Set from --webui-url= before LoadSettings() runs; prepended to g_webuiUrls
+// there so the .ini cannot drop a URL the user asked for on the command line.
+extern std::wstring g_webuiUrlOverride;
 extern std::vector<std::wstring> g_domainWhitelist;
 extern std::string  g_updateUrl;
 extern std::wstring  g_extensionsDetailsUrl;

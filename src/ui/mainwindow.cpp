@@ -332,6 +332,34 @@ void HandleEvent(const std::string &ev, std::vector<std::string> &args)
         }
     } else if (ev == "activity") {
         SetDiscordPresenceFromArgs(args);
+    } else if (ev == "win-set-visibility") {
+        // The fork drives fullscreen from the page and lets the shell follow
+        // ContainsFullScreenElementChanged. The official bundle asks the shell
+        // directly when it is active, and sends {"fullscreen": bool} - an
+        // object, so it reaches us as one dumped JSON string.
+        if (!args.empty()) {
+            try {
+                auto payload = nlohmann::json::parse(args[0]);
+                if (payload.contains("fullscreen") && payload["fullscreen"].is_boolean()) {
+                    ToggleFullScreen(g_hWnd, payload["fullscreen"].get<bool>());
+                }
+            } catch (const std::exception &e) {
+                std::cout << "[WARN] win-set-visibility payload: " << e.what() << "\n";
+            }
+        }
+    } else if (ev == "quit") {
+        // Both builds send this from their own exit control. Route it through
+        // WM_CLOSE so it obeys the Close on Exit setting, same as the frame's
+        // close button.
+        PostMessageW(g_hWnd, WM_CLOSE, 0, 0);
+    } else if (ev == "discord-set-activity") {
+        // The fork has its own "activity" event with positional args; the
+        // official bundle sends a Discord-shaped object instead.
+        if (!args.empty()) SetDiscordActivityFromJson(args[0]);
+    } else if (ev == "discord-clear-activity" || ev == "discord-disconnect") {
+        ClearDiscordActivity();
+    } else if (ev == "discord-connect") {
+        // Nothing to do: the RPC connection is opened once at startup.
     } else if (ev == "request-fullscreen-key") {
         // Only asked for when entering; exiting is handled entirely on the
         // page side (exitFullscreen() needs no gesture). The native window
@@ -393,6 +421,11 @@ void HandleInboundJSON(const std::string &msg)
             // 3 = Init event
             nlohmann::json root;
             root["id"] = 0;
+            // The fork keys the reply off id==0 and ignores "type"; the official
+            // bundle matches on type===INIT and stays uninitialized without it -
+            // and it only sends "app-ready" once initialized, so omitting this
+            // leaves the splash up until the reload loop gives out.
+            root["type"] = 3;
             nlohmann::json transportObj;
 
             json extData = {};
@@ -402,9 +435,14 @@ void HandleInboundJSON(const std::string &msg)
                 }
             }
 
+            // The fork reads these by name, the official bundle by index:
+            // properties[1][3] is the shell version and properties[2][3] the
+            // gpuVideoProcessing flag. Keep that order - a name-keyed reader
+            // does not care, an index-keyed one does.
             transportObj["properties"] = {
                 1,
                 nlohmann::json::array({0, "shellVersion", 0, APP_VERSION}),
+                nlohmann::json::array({0, "gpuVideoProcessing", 0, "false"}),
                 nlohmann::json::array({0, "BrowserExtensions", 0, extData}),
             };
             transportObj["signals"] = {
@@ -421,10 +459,15 @@ void HandleInboundJSON(const std::string &msg)
             return;
         }
 
-        if (type == 6 && j.contains("method"))
+        if (type == 6)
         {
-            std::string methodName = j["method"].get<std::string>();
-            if (methodName == "handleInboundJSON" || methodName == "onEvent")
+            // The fork posts the qt-webchannel shape, {object, method, args};
+            // the official bundle posts {id, type, args} with no method at all.
+            // Both put the event name in args[0] and its payload in args[1], so
+            // only the envelope differs.
+            const bool hasMethod = j.contains("method") && j["method"].is_string();
+            const std::string methodName = hasMethod ? j["method"].get<std::string>() : std::string();
+            if (!hasMethod || methodName == "handleInboundJSON" || methodName == "onEvent")
             {
                 if (j["args"].is_array() && !j["args"].empty())
                 {

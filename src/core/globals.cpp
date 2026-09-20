@@ -10,11 +10,18 @@ HBRUSH    g_darkBrush = nullptr;
 HANDLE    g_hMutex  = nullptr;
 HHOOK     g_hMouseHook = nullptr;
 
+// Candidate web UI endpoints, tried in order by GetFirstReachableUrl(). This is
+// only the compiled-in fallback: LoadSettings() replaces it with [General]
+// WebUIUrl, and --webui-url= takes precedence over both.
+//
+// The shell speaks both UI protocols: the fork's initShellComm/qt handshake and
+// the official bundle's chrome.webview one. See HandleWebMessage and
+// EXEC_SHELL_SCRIPT for where the two envelopes diverge.
 std::vector<std::wstring> g_webuiUrls = {
-    L"https://stremio.zarg.me/",
-    L"https://zaarrg.github.io/stremio-web-shell-fixes/",
-    L"https://web.stremio.com/"
+    L"https://web.stremio.com/",
+    L"https://stremio.zarg.me/"
 };
+std::wstring g_webuiUrlOverride;
 std::vector<std::wstring> g_domainWhitelist;
 std::string  g_updateUrl= "https://raw.githubusercontent.com/Zaarrg/stremio-desktop-v5/refs/heads/webview-windows/version/version.json";
 std::wstring  g_extensionsDetailsUrl= L"https://raw.githubusercontent.com/Zaarrg/stremio-desktop-v5/refs/heads/webview-windows/extensions/extensions.json";

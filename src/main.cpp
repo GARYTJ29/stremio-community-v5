@@ -92,7 +92,9 @@ int main(int argc, char *argv[]) {
   for (int i = 1; i < argc; i++) {
     std::string arg(argv[i]);
     if (arg.rfind("--webui-url=", 0) == 0) {
-      g_webuiUrls.insert(g_webuiUrls.begin(), Utf8ToWstring(arg.substr(12)));
+      // Stashed rather than pushed: LoadSettings() rebuilds g_webuiUrls from the
+      // .ini below and puts this back at the front.
+      g_webuiUrlOverride = Utf8ToWstring(arg.substr(12));
     } else if (arg.rfind("--autoupdater-endpoint=", 0) == 0) {
       g_updateUrl = arg.substr(23);
     } else if (arg == "--streaming-server-disabled") {

@@ -11,6 +11,13 @@ constexpr int kDefaultMaxVolume = 200;
 constexpr int kMaxVolumeFloor = 100;
 constexpr int kMaxVolumeCeiling = 1000;
 
+// Web UI candidates used when [General] WebUIUrl is absent from the .ini. The
+// key accepts a comma-separated list; GetFirstReachableUrl() tries the entries
+// in order. The fork trails the official bundle as a fallback.
+constexpr const wchar_t* kDefaultWebUIUrl =
+    L"https://web.stremio.com/,"
+    L"https://stremio.zarg.me/";
+
 // InitialVolume only ever remembers unboosted levels. A session that ended at
 // 180% should not start the next one deafening.
 constexpr int kMaxInitialVolume = 100;

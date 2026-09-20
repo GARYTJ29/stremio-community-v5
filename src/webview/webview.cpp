@@ -33,6 +33,12 @@ try {
       });
 
       window.onload = () => {
+        // Two UI builds, two handshakes. The shell-fixes fork exposes
+        // initShellComm() and stays disconnected until the shell calls it. The
+        // official web.stremio.com bundle has no such function - it reads
+        // chrome.webview itself and opens with an INIT of its own - so calling
+        // it there would throw and send the app into the reload loop.
+        if (typeof window.initShellComm !== 'function') return;
         try {
           initShellComm();
         } catch (e) {
@@ -90,7 +96,7 @@ static const wchar_t* INJECTED_KEYDOWN_SCRIPT = LR"JS(
 })();
 )JS";
 
-static const wchar_t* INJECTED_BUTTON_SCRIPT = LR"JS(
+static const wchar_t* INJECTED_BUTTON_SCRIPT_PART1 = LR"JS(
 (function() {
   // Create the button element
   var btn = document.createElement('button');
@@ -124,7 +130,9 @@ static const wchar_t* INJECTED_BUTTON_SCRIPT = LR"JS(
 
   // Create an image element for the logo
   var img = document.createElement('img');
-  img.src = 'https://stremio.zarg.me/images/stremio_symbol.png';
+  img.src = ')JS";
+
+static const wchar_t* INJECTED_BUTTON_SCRIPT_PART2 = LR"JS(';
   img.alt = 'Logo';
   img.style.height = '24px';
   img.style.width = '24px';
@@ -161,6 +169,17 @@ img.addEventListener('error', function() {
   document.body.appendChild(btn);
 })();
 )JS";
+
+// The logo is served by whichever web UI actually loaded, so it follows
+// g_webuiUrl rather than being pinned to one host. The script hides the <img>
+// on error, so a UI without that asset just shows the label.
+static std::wstring GetInjectedButtonScript()
+{
+    std::wstring base = g_webuiUrl;
+    if (!base.empty() && base.back() != L'/') base += L'/';
+    return std::wstring(INJECTED_BUTTON_SCRIPT_PART1) + base
+         + L"images/stremio_symbol.png" + INJECTED_BUTTON_SCRIPT_PART2;
+}
 
 const wchar_t* INJECTED_CHAPTERS_SCRIPT_PART1 = LR"JS(
 (function() {
@@ -833,7 +852,7 @@ static void SetupWebMessageHandler()
 
             // Add back to stremio button if not on stremio
             if (finalUri.find(g_webuiUrl) == std::wstring::npos) {
-                sender->ExecuteScript(INJECTED_BUTTON_SCRIPT, nullptr);
+                sender->ExecuteScript(GetInjectedButtonScript().c_str(), nullptr);
             }
 
             if(isSuccess) {

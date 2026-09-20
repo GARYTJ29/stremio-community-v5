@@ -192,7 +192,11 @@ void HandleMpvEvents()
             j["type"]="mpv-event-ended";
             switch(ef->reason){
                 case MPV_END_FILE_REASON_EOF:
-                    j["reason"]="quit";
+                    // Must be "eof": the official bundle only treats a file as
+                    // finished when the reason is "eof" or "other", and any
+                    // other string makes it swallow the event - no autoplay, no
+                    // mark-as-watched. The fork ignores the field entirely.
+                    j["reason"]="eof";
                 SendToJS("mpv-event-ended", j);
                 break;
                 case MPV_END_FILE_REASON_ERROR: {
