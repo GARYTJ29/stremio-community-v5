@@ -830,10 +830,21 @@ local function draw(w, h, script, source)
     displayed_source = source
     if x ~= nil then
         local scale_w, scale_h = options.scale_factor ~= 1 and (w * options.scale_factor) or nil, options.scale_factor ~= 1 and (h * options.scale_factor) or nil
+        -- The shell hands over the thumbnail's bottom-centre in physical pixels
+        -- (upstream takes the top-left), so the preview stays centred on the cursor
+        -- at any aspect ratio. Keep it inside the window near either end of the bar.
+        local disp_w, disp_h = scale_w or w, scale_h or h
+        local ox = math.floor(x - disp_w / 2 + 0.5)
+        local oy = math.max(0, y - disp_h)
+        local osd = mp.get_property_native("osd-dimensions")
+        if osd and osd.w and osd.w > disp_w then
+            ox = math.min(ox, osd.w - disp_w)
+        end
+        ox = math.max(0, ox)
         if pre_0_30_0 then
-            mp.command_native({"overlay-add", options.overlay_id, x, y, source, 0, "bgra", w, h, (4*w), scale_w, scale_h})
+            mp.command_native({"overlay-add", options.overlay_id, ox, oy, source, 0, "bgra", w, h, (4*w), scale_w, scale_h})
         else
-            mp.command_native_async({"overlay-add", options.overlay_id, x, y, source, 0, "bgra", w, h, (4*w), scale_w, scale_h}, function() end)
+            mp.command_native_async({"overlay-add", options.overlay_id, ox, oy, source, 0, "bgra", w, h, (4*w), scale_w, scale_h}, function() end)
         end
     elseif script then
         -- Consumers append ".bgra" to `thumbnail` themselves, so hand them the cache

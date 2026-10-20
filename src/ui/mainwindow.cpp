@@ -1,5 +1,6 @@
 #include "mainwindow.h"
 
+#include <cmath>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -273,26 +274,33 @@ void HandleEvent(const std::string &ev, std::vector<std::string> &args)
             return;
         }
 
-        // Convert the y-coordinate from string to an integer
-        int yCoord = 0;
+        // The web UI sends the mouse's clientX/clientY, which are CSS pixels,
+        // but mpv renders into this same window and overlay-add takes physical
+        // pixels. At any display scale other than 100% the two disagree and the
+        // thumbnail drifts towards the top-left by that factor.
+        double xCss = 0, yCss = 0;
         try {
-            yCoord = std::stoi(args[2]);
+            xCss = std::stod(args[1]);
+            yCss = std::stod(args[2]);
         } catch(const std::exception &e) {
-            std::cerr << "Error converting y coordinate: " << e.what() << "\n";
+            std::cerr << "Error converting seek-hover coordinates: " << e.what() << "\n";
             return;
         }
+        const double dpiScale = GetDpiForWindow(g_hWnd) / 96.0;
 
-        // Subtract the thumb fast height from y
-        int adjustedY = yCoord - g_thumbFastHeight;
+        // thumbfast treats (x, y) as the thumbnail's bottom-centre, so it sits
+        // centred on the cursor, ThumbFastHeight CSS pixels above it, whatever
+        // the thumbnail's aspect ratio.
+        int anchorX = (int)std::lround(xCss * dpiScale);
+        int anchorY = (int)std::lround((yCss - g_thumbFastHeight) * dpiScale);
 
-        // Prepare command for thumbfast with adjusted y-coordinate
         std::vector<std::string> cmdArgs = {
             "script-message-to",
             "thumbfast",
             "thumb",
-            args[0],              // hovered_seconds
-            args[1],              // x
-            std::to_string(adjustedY)  // y with offset
+            args[0],                  // hovered_seconds
+            std::to_string(anchorX),
+            std::to_string(anchorY)
         };
 
         HandleMpvCommand(cmdArgs);

@@ -206,7 +206,7 @@
     - ⌨️ **Possible Settings**
         - ❌ ``CloseOnExit`` Close app on exit instead of minimized to tray
         - 🌓 ``UseDarkTheme`` Toggle dark theme
-        - 📏 ``ThumbFastHeight`` Enable thumbfast and set the thumbfast image height. This adjust the offset of the top left corner of the thumb. Meaning `100` will move the top left corner 100px up. `0` disables thumbfast
+        - 📏 ``ThumbFastHeight`` Enable thumbfast and set the offset of the top left corner of the thumb above the seekbar. Should roughly match the thumbnail's `max_height` plus a small gap (e.g. `110` for `max_height=90`). The bottom edge stays consistent across aspect ratios automatically. `0` disables thumbfast
         - 😴 ``PauseOnMinimize`` Pause playback on window minimize
         - 👀 ``PauseOnLostFocus`` Pause playback on window loses focus
         - 🔍 ``AllowZoom`` Allow zoom via `pinch action` or ``CTRL+Scroll``
