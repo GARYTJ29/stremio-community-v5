@@ -375,6 +375,7 @@ void HandleEvent(const std::string &ev, std::vector<std::string> &args)
         // ContainsFullScreenElementChanged once the DOM state actually
         // flips, same as when the web UI's own fullscreen button is used.
         SendSyntheticFullscreenKey();
+
     } else if (ev == "request-chapters") {
         ResendChapterData();
     } else if (ev == "mpv-console-paste") {

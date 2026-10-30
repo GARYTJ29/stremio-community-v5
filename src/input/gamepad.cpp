@@ -1490,7 +1490,10 @@ R"JS(
             toggleFullscreen();
             break;
         case 'R3':
-            if (player) sendKey('KeyR');               // playback speed menu
+            if (lbHeld) {
+                lbPending = false;
+                window.location.reload();              // LB+R3: reload current page
+            } else sendKey('KeyR');                     // playback speed menu
             break;
         default:
             break;
@@ -1562,7 +1565,17 @@ R"JS(
             if (active) { held = {}; setActive(false); }
             return;
         }
-        if (!active) setActive(true);
+        if (!active) {
+            setActive(true);
+            // Pre-seed the held map so buttons that are already down when
+            // polling starts (e.g. LB still pressed after an LB+R3 reload)
+            // are not mistaken for new presses.
+            var s0 = readPad(pad);
+            var t0 = window.performance ? performance.now() : Date.now();
+            for (var j = 0; j < BUTTONS.length; j++) {
+                if (s0[BUTTONS[j]]) held[BUTTONS[j]] = { down: true, next: t0 + CFG.repeatDelay };
+            }
+        }
 
         var now = window.performance ? performance.now() : Date.now();
         var state = readPad(pad);
