@@ -1490,7 +1490,10 @@ R"JS(
             toggleFullscreen();
             break;
         case 'R3':
-            if (player) sendKey('KeyR');               // playback speed menu
+            if (lbHeld) {
+                lbPending = false;
+                window.location.reload();              // LB+R3: reload current page
+            } else sendKey('KeyR');                     // playback speed menu
             break;
         default:
             break;
