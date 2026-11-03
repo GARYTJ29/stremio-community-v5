@@ -1314,15 +1314,29 @@ R"JS(
     // mute, speed, cast, subtitles, audio...) instead of driving seek and volume.
     var navMode = false;
 
+    // Chromium exposes any HID device with buttons as a gamepad - headsets with
+    // call/mute keys included - and those can enumerate ahead of the real pad.
+    // So rank them: a standard-mapped pad first, then anything shaped like one
+    // (two sticks' worth of axes and a face-button count), and never a device
+    // that is neither.
+    function padRank(pad) {
+        if (!pad || !pad.connected) return 0;
+        if (pad.mapping === 'standard') return 2;
+        if ((pad.axes || []).length >= 2 && (pad.buttons || []).length >= 10) return 1;
+        return 0;
+    }
+
     function currentPad() {
         var pads = navigator.getGamepads();
         if (!pads) return null;
-        if (padIndex >= 0 && pads[padIndex] && pads[padIndex].connected) return pads[padIndex];
+        var best = -1, bestRank = 0;
         for (var i = 0; i < pads.length; i++) {
-            if (pads[i] && pads[i].connected) { padIndex = i; return pads[i]; }
+            var r = padRank(pads[i]);
+            // Stick with the current pad unless something strictly better shows up.
+            if (r > bestRank || (r && r === bestRank && i === padIndex)) { best = i; bestRank = r; }
         }
-        padIndex = -1;
-        return null;
+        padIndex = best;
+        return best >= 0 ? pads[best] : null;
     }
 
     function readPad(pad) {
@@ -1596,7 +1610,8 @@ R"JS(
     }
 
     window.addEventListener('gamepadconnected', function (e) {
-        if (e.gamepad) padIndex = e.gamepad.index;
+        // Not adopted outright - currentPad() decides whether it is a controller.
+        if (!padRank(e.gamepad)) return;
         start();
         rumble(160, 0.35, 0.15);
     });
